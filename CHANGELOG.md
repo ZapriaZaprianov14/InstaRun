@@ -1,5 +1,5 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# FirstPlugin Changelog
+# InstaRun Changelog
 
 ## [Unreleased]

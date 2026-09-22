@@ -1,11 +1,11 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
-    <id>com.zapryan.FirstPlugin</id>
+    <id>com.zapryan.InstaRun</id>
 
     <!-- Public plugin name should be written in Title Case.
      Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-name -->
-    <name>FirstPlugin</name>
+    <name>InstaRun</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
     <vendor url="https://www.yourcompany.com">YourCompany</vendor>
@@ -21,16 +21,12 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.java</depends>
 
-    <resource-bundle>messages.MyMessageBundle</resource-bundle>
     <resource-bundle>messages.MyMessageBundleJava</resource-bundle>
 
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="MyToolWindow" factoryClass="com.zapryan.MyToolWindowFactory"
-                    icon="AllIcons.Toolwindows.ToolWindowPalette"/>
-
-        <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.MyToolWindowFactoryJava"
+        <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.InputToolWindowFactory"
                     icon="AllIcons.Toolwindows.ToolWindowPalette"/>
     </extensions>
 

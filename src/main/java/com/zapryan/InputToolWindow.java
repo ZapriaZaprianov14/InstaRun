@@ -9,7 +9,7 @@ import java.awt.*;
 import java.awt.event.ActionListener;
 import java.util.Random;
 
-public class MyToolWindowJava{
+public class InputToolWindow {
     private final JBPanel<JBPanel<?>> content;
     private final JButton shuffleButton;
 
@@ -20,17 +20,17 @@ public class MyToolWindowJava{
         return shuffleButton;
     }
 
-    public MyToolWindowJava(){
+    public InputToolWindow(){
         content = new JBPanel<>(new GridLayout(0, 1, 0, 8));
         content.setPreferredSize(new Dimension(220, 90));
         content.setBorder(JBUI.Borders.empty(12));
 
-        JBLabel label = new JBLabel(MyMessageBundleJava.message("toolwindow.MyToolWindowJava.number.label", "?"));
+        JBLabel label = new JBLabel(MessageBundler.message("toolwindow.MyToolWindowJava.number.label", "?"));
         content.add(label);
 
-        shuffleButton = new JButton(MyMessageBundleJava.message("toolwindow.MyToolWindowJava.shuffle.button"));
+        shuffleButton = new JButton(MessageBundler.message("toolwindow.MyToolWindowJava.shuffle.button"));
         ActionListener listener = (event) ->
-                label.setText(MyMessageBundleJava.message("toolwindow.MyToolWindowJava.number.label", getRandomInt()));
+                label.setText(MessageBundler.message("toolwindow.MyToolWindowJava.number.label", getRandomInt()));
         shuffleButton.addActionListener(listener);
         content.add(shuffleButton);
     }

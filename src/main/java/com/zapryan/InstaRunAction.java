@@ -58,11 +58,11 @@ public class InstaRunAction extends AnAction {
             return;
         }
 
-        MyToolWindowJava myToolWindowJava =
-                new MyToolWindowJava();
+        InputToolWindow inputToolWindow =
+                new InputToolWindow();
 
         JBPopup popup = JBPopupFactory.getInstance()
-                .createComponentPopupBuilder(myToolWindowJava.getContent(), null)
+                .createComponentPopupBuilder(inputToolWindow.getContent(), null)
                 .setTitle("InstaRun Window From Right Click")
                 .setMovable(true)
                 .setResizable(true)
