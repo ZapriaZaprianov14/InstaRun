@@ -21,7 +21,7 @@
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.java</depends>
 
-    <resource-bundle>messages.MyMessageBundleJava</resource-bundle>
+    <resource-bundle>messages.MessageBundler</resource-bundle>
 
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
@@ -33,7 +33,7 @@
     <actions>
         <action id="com.zapryan.InstaRunAction"
                 class="com.zapryan.InstaRunAction">
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
     </actions>
 
