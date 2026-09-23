@@ -4,6 +4,8 @@ import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBPanel;
 import com.intellij.util.ui.JBUI;
 import com.zapryan.reflection.MethodDescriptor;
+import com.zapryan.reflection.ParameterDescriptor;
+import lombok.Getter;
 
 import java.awt.GridLayout;
 import java.util.List;
@@ -12,7 +14,9 @@ import java.util.List;
  * Showcase panel: prints the pieces of a {@link MethodDescriptor} needed to invoke the method
  * via reflection (declaring class, name, return type, static/instance, parameter types).
  */
+@Getter
 public class MethodInfoPanel {
+
     private final JBPanel<JBPanel<?>> content;
 
     public MethodInfoPanel(MethodDescriptor descriptor) {
@@ -24,21 +28,17 @@ public class MethodInfoPanel {
         content.add(new JBLabel(MessageBundler.message("methodinfo.returnType.label", descriptor.getReturnTypeFqn())));
         content.add(new JBLabel(MessageBundler.message("methodinfo.static.label", descriptor.isStatic())));
 
-        List<MethodDescriptor.ParameterDescriptor> parameters = descriptor.getParameters();
+        List<ParameterDescriptor> parameters = descriptor.getParameters();
         content.add(new JBLabel(MessageBundler.message("methodinfo.parameterCount.label", parameters.size())));
 
         if (parameters.isEmpty()) {
             content.add(new JBLabel(MessageBundler.message("methodinfo.noParameters.label")));
         } else {
             for (int i = 0; i < parameters.size(); i++) {
-                MethodDescriptor.ParameterDescriptor parameter = parameters.get(i);
+                ParameterDescriptor parameter = parameters.get(i);
                 content.add(new JBLabel(MessageBundler.message(
                         "methodinfo.parameter.label", i, parameter.getTypeFqn(), parameter.getName())));
             }
         }
-    }
-
-    public JBPanel<JBPanel<?>> getContent() {
-        return content;
     }
 }

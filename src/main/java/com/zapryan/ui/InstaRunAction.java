@@ -61,12 +61,10 @@ public class InstaRunAction extends AnAction {
         if (project == null) {
             return;
         }
-
         MethodDescriptor descriptor = ReadAction.compute(() -> {
             PsiMethod method = resolveMethodNameAtCaret(e);
             return method != null ? MethodDescriptorFactory.from(method) : null;
         });
-
         if (descriptor == null) {
             return;
         }

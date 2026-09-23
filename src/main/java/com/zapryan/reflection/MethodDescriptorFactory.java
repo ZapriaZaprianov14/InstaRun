@@ -29,9 +29,9 @@ public final class MethodDescriptorFactory {
         boolean isStatic = method.hasModifierProperty(PsiModifier.STATIC);
 
         PsiParameterList parameterList = method.getParameterList();
-        List<MethodDescriptor.ParameterDescriptor> parameters = new ArrayList<>(parameterList.getParametersCount());
+        List<ParameterDescriptor> parameters = new ArrayList<>(parameterList.getParametersCount());
         for (PsiParameter parameter : parameterList.getParameters()) {
-            parameters.add(new MethodDescriptor.ParameterDescriptor(
+            parameters.add(new ParameterDescriptor(
                     parameter.getName(),
                     parameter.getType().getCanonicalText()));
         }
