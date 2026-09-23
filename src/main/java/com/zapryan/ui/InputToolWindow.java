@@ -1,4 +1,4 @@
-package com.zapryan;
+package com.zapryan.ui;
 
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBPanel;
@@ -25,12 +25,12 @@ public class InputToolWindow {
         content.setPreferredSize(new Dimension(220, 90));
         content.setBorder(JBUI.Borders.empty(12));
 
-        JBLabel label = new JBLabel(MessageBundler.message("toolwindow.MyToolWindowJava.number.label", "?"));
+        JBLabel label = new JBLabel(MessageBundler.message("toolwindow.InputToolWindow.number.label", "?"));
         content.add(label);
 
-        shuffleButton = new JButton(MessageBundler.message("toolwindow.MyToolWindowJava.shuffle.button"));
+        shuffleButton = new JButton(MessageBundler.message("toolwindow.InputToolWindow.shuffle.button"));
         ActionListener listener = (event) ->
-                label.setText(MessageBundler.message("toolwindow.MyToolWindowJava.number.label", getRandomInt()));
+                label.setText(MessageBundler.message("toolwindow.InputToolWindow.number.label", getRandomInt()));
         shuffleButton.addActionListener(listener);
         content.add(shuffleButton);
     }

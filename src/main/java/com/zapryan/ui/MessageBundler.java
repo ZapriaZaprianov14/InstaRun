@@ -1,4 +1,4 @@
-package com.zapryan;
+package com.zapryan.ui;
 
 import com.intellij.DynamicBundle;
 

@@ -26,13 +26,13 @@
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.InputToolWindowFactory"
+        <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.ui.InputToolWindowFactory"
                     icon="AllIcons.Toolwindows.ToolWindowPalette"/>
     </extensions>
 
     <actions>
-        <action id="com.zapryan.InstaRunAction"
-                class="com.zapryan.InstaRunAction">
+        <action id="com.zapryan.ui.InstaRunAction"
+                class="com.zapryan.ui.InstaRunAction">
             <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
     </actions>
