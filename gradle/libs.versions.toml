@@ -1,7 +1,9 @@
 [versions]
 junit = "4.13.2"
 lombok = "1.18.48"
+annotations = "26.0.2"
 
 [libraries]
 junit = { module = "junit:junit", version.ref = "junit" }
 lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+annotations = { module = "org.jetbrains:annotations", version.ref = "annotations" }
