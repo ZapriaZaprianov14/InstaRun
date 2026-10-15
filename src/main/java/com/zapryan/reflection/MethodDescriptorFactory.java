@@ -6,6 +6,7 @@ import com.intellij.psi.PsiModifier;
 import com.intellij.psi.PsiParameter;
 import com.intellij.psi.PsiParameterList;
 import com.intellij.psi.PsiType;
+import com.intellij.psi.util.ClassUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,7 @@ public final class MethodDescriptorFactory {
         String declaringClassFqn = declaringClass != null && declaringClass.getQualifiedName() != null
                 ? declaringClass.getQualifiedName()
                 : "<unknown>";
+        String declaringClassBinaryName = declaringClass != null ? ClassUtil.getJVMClassName(declaringClass) : null;
 
         String returnTypeFqn = returnTypeFqn(method, declaringClassFqn);
         boolean isStatic = method.hasModifierProperty(PsiModifier.STATIC);
@@ -36,7 +38,8 @@ public final class MethodDescriptorFactory {
                     parameter.getType().getCanonicalText()));
         }
 
-        return new MethodDescriptor(declaringClassFqn, method.getName(), returnTypeFqn, isStatic, parameters);
+        return new MethodDescriptor(declaringClassFqn, declaringClassBinaryName, method.getName(), returnTypeFqn,
+                isStatic, method.isConstructor(), parameters);
     }
 
     private static String returnTypeFqn(PsiMethod method, String declaringClassFqn) {
