@@ -41,6 +41,7 @@ dependencies {
     // because that jar is exactly what gets put on the launched JVM's classpath.
     compileOnly(bootstrap.output)
     runtimeOnly(files(bootstrapJar))
+    testCompileOnly(bootstrap.output)
 
     testImplementation(libs.junit)
 

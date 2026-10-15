@@ -28,11 +28,22 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.ui.InputToolWindowFactory"
                     icon="AllIcons.Toolwindows.ToolWindowPalette"/>
+        <configurationType implementation="com.zapryan.launch.InstaRunConfigurationType"/>
     </extensions>
 
     <actions>
         <action id="com.zapryan.ui.InstaRunAction"
                 class="com.zapryan.ui.InstaRunAction">
+            <add-to-group group-id="RunContextGroup" anchor="last"/>
+        </action>
+        <action id="com.zapryan.ui.RunMethodAction"
+                class="com.zapryan.ui.RunMethodAction"
+                icon="AllIcons.Actions.Execute">
+            <add-to-group group-id="RunContextGroup" anchor="last"/>
+        </action>
+        <action id="com.zapryan.ui.DebugMethodAction"
+                class="com.zapryan.ui.DebugMethodAction"
+                icon="AllIcons.Actions.StartDebugger">
             <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
     </actions>
