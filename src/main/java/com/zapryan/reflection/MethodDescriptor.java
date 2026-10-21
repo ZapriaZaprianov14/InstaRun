@@ -11,7 +11,7 @@ import java.util.List;
 public final class MethodDescriptor {
 
     private final String declaringClassFqn;
-    /** JVM binary name ({@code Outer$Inner}) for Class; null for local and anonymous classes. */
+    /** JVM binary name ({@code Outer$Inner}) for {@link Class#forName}; null for local and anonymous classes. */
     @Nullable
     private final String declaringClassBinaryName;
     private final String methodName;
@@ -19,4 +19,5 @@ public final class MethodDescriptor {
     private final boolean isStatic;
     private final boolean isConstructor;
     private final List<ParameterDescriptor> parameters;
+    private final ReceiverDescriptor receiver;
 }

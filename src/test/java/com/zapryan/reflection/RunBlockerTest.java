@@ -9,42 +9,86 @@ import static org.junit.Assert.assertEquals;
 public class RunBlockerTest {
 
     private static final ParameterDescriptor COUNT = new ParameterDescriptor("count", "int");
+    private static final ParameterDescriptor NAME = new ParameterDescriptor("name", "java.lang.String");
+    private static final ParameterDescriptor ITEMS = new ParameterDescriptor("items", "java.util.List<java.lang.String>");
+    private static final ReceiverDescriptor NO_ARGUMENT_CONSTRUCTOR = new ReceiverDescriptor(
+            ReceiverDescriptor.Kind.INSTANTIABLE, List.of(new ConstructorDescriptor(List.of())));
 
     @Test
-    public void staticMethodWithoutParametersHasNoBlockers() {
-        assertEquals(List.of(), RunBlocker.findAll(method("com.acme.Tool", true, false)));
+    public void staticMethodWithSupportedParametersHasNoBlockers() {
+        assertEquals(List.of(), RunBlocker.findAll(staticMethod(COUNT, NAME)));
     }
 
     @Test
-    public void instanceMethodIsBlocked() {
-        assertEquals(List.of(RunBlocker.NOT_STATIC), RunBlocker.findAll(method("com.acme.Tool", false, false)));
+    public void instanceMethodWithAUsableConstructorHasNoBlockers() {
+        assertEquals(List.of(), RunBlocker.findAll(instanceMethod(NO_ARGUMENT_CONSTRUCTOR, COUNT)));
     }
 
     @Test
-    public void methodWithParametersIsBlocked() {
-        assertEquals(List.of(RunBlocker.HAS_PARAMETERS),
-                RunBlocker.findAll(method("com.acme.Tool", true, false, COUNT)));
+    public void unsupportedParameterTypeIsBlocked() {
+        assertEquals(List.of(RunBlocker.UNSUPPORTED_PARAMETER_TYPE), RunBlocker.findAll(staticMethod(COUNT, ITEMS)));
+    }
+
+    @Test
+    public void receiverThatCannotBeCreatedIsBlocked() {
+        assertEquals(List.of(RunBlocker.ABSTRACT_RECEIVER),
+                RunBlocker.findAll(instanceMethod(cannotBeCreated(ReceiverDescriptor.Kind.ABSTRACT))));
+        assertEquals(List.of(RunBlocker.ENUM_RECEIVER),
+                RunBlocker.findAll(instanceMethod(cannotBeCreated(ReceiverDescriptor.Kind.ENUM))));
+        assertEquals(List.of(RunBlocker.INNER_CLASS_RECEIVER),
+                RunBlocker.findAll(instanceMethod(cannotBeCreated(ReceiverDescriptor.Kind.INNER_CLASS))));
+    }
+
+    @Test
+    public void classWithoutAUsableConstructorIsBlocked() {
+        ReceiverDescriptor onlyUnsupportedConstructor = new ReceiverDescriptor(
+                ReceiverDescriptor.Kind.INSTANTIABLE, List.of(new ConstructorDescriptor(List.of(ITEMS))));
+
+        assertEquals(List.of(RunBlocker.NO_USABLE_CONSTRUCTOR),
+                RunBlocker.findAll(instanceMethod(onlyUnsupportedConstructor)));
+    }
+
+    @Test
+    public void receiverDoesNotMatterForStaticMethods() {
+        MethodDescriptor staticMethodOfAbstractClass =
+                method("com.acme.Tool", true, false, cannotBeCreated(ReceiverDescriptor.Kind.ABSTRACT));
+
+        assertEquals(List.of(), RunBlocker.findAll(staticMethodOfAbstractClass));
     }
 
     @Test
     public void methodOfLocalOrAnonymousClassIsBlocked() {
-        assertEquals(List.of(RunBlocker.LOCAL_OR_ANONYMOUS_CLASS), RunBlocker.findAll(method(null, true, false)));
+        assertEquals(List.of(RunBlocker.LOCAL_OR_ANONYMOUS_CLASS),
+                RunBlocker.findAll(method(null, false, false, NO_ARGUMENT_CONSTRUCTOR)));
     }
 
     @Test
     public void everyApplicableBlockerIsReported() {
-        assertEquals(List.of(RunBlocker.LOCAL_OR_ANONYMOUS_CLASS, RunBlocker.NOT_STATIC, RunBlocker.HAS_PARAMETERS),
-                RunBlocker.findAll(method(null, false, false, COUNT)));
+        assertEquals(List.of(RunBlocker.ENUM_RECEIVER, RunBlocker.UNSUPPORTED_PARAMETER_TYPE),
+                RunBlocker.findAll(instanceMethod(cannotBeCreated(ReceiverDescriptor.Kind.ENUM), ITEMS)));
     }
 
     @Test
     public void constructorIsReportedOnItsOwn() {
-        assertEquals(List.of(RunBlocker.CONSTRUCTOR), RunBlocker.findAll(method("com.acme.Tool", false, true, COUNT)));
+        assertEquals(List.of(RunBlocker.CONSTRUCTOR),
+                RunBlocker.findAll(method("com.acme.Tool", false, true, NO_ARGUMENT_CONSTRUCTOR, ITEMS)));
+    }
+
+    private static MethodDescriptor staticMethod(ParameterDescriptor... parameters) {
+        return method("com.acme.Tool", true, false, NO_ARGUMENT_CONSTRUCTOR, parameters);
+    }
+
+    private static MethodDescriptor instanceMethod(ReceiverDescriptor receiver, ParameterDescriptor... parameters) {
+        return method("com.acme.Tool", false, false, receiver, parameters);
     }
 
     private static MethodDescriptor method(String binaryName, boolean isStatic, boolean isConstructor,
-                                           ParameterDescriptor... parameters) {
+                                           ReceiverDescriptor receiver, ParameterDescriptor... parameters) {
         return new MethodDescriptor("com.acme.Tool", binaryName, "run", "void", isStatic, isConstructor,
-                List.of(parameters));
+                List.of(parameters), receiver);
+    }
+
+    private static ReceiverDescriptor cannotBeCreated(ReceiverDescriptor.Kind kind) {
+        return new ReceiverDescriptor(kind, List.of());
     }
 }

@@ -10,8 +10,10 @@ import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiMethod;
 import com.zapryan.launch.LaunchTarget;
+import com.zapryan.launch.MethodInput;
 import com.zapryan.launch.MethodLauncher;
 import com.zapryan.reflection.MethodDescriptor;
 import com.zapryan.reflection.RunBlocker;
@@ -23,7 +25,7 @@ import java.util.stream.Collectors;
 
 /**
  * Shared behaviour of Run Method and Debug Method: visible on any method name, and on click either
- * reports exactly why the method cannot run or launches it under this action's executor.
+ * reports exactly why the method cannot run, or asks for its inputs and launches it under this action's executor.
  */
 abstract class MethodLaunchAction extends AnAction {
 
@@ -61,7 +63,7 @@ abstract class MethodLaunchAction extends AnAction {
         MethodDescriptor method = target.getMethod();
         List<RunBlocker> blockers = RunBlocker.findAll(method);
         if (!blockers.isEmpty()) {
-            showError(editor, MessageBundler.message("run.blocked", method.getMethodName(), describeAll(blockers)));
+            showError(editor, MessageBundler.message("run.blocked", method.getMethodName(), describeAll(blockers, method)));
             return;
         }
         Module module = target.getModule();
@@ -69,23 +71,41 @@ abstract class MethodLaunchAction extends AnAction {
             showError(editor, MessageBundler.message("run.error.noModule", method.getMethodName()));
             return;
         }
-        MethodLauncher.launch(project, module, target.isInTestSources(), method, executor.get());
+        Executor chosenExecutor = executor.get();
+        MethodInput input = MethodInputDialog.ask(project, method, chosenExecutor);
+        if (input == null) {
+            return;
+        }
+        MethodLauncher.launch(project, module, target.isInTestSources(), method, input, chosenExecutor);
     }
 
-    private static String describeAll(List<RunBlocker> blockers) {
-        return blockers.stream().map(MethodLaunchAction::describe).collect(Collectors.joining(" "));
+    private static String describeAll(List<RunBlocker> blockers, MethodDescriptor method) {
+        return blockers.stream().map(blocker -> describe(blocker, method)).collect(Collectors.joining(" "));
     }
 
-    private static String describe(RunBlocker blocker) {
+    private static String describe(RunBlocker blocker, MethodDescriptor method) {
+        String className = StringUtil.getShortName(method.getDeclaringClassFqn());
         return switch (blocker) {
             case CONSTRUCTOR -> MessageBundler.message("run.blocker.constructor");
             case LOCAL_OR_ANONYMOUS_CLASS -> MessageBundler.message("run.blocker.localOrAnonymousClass");
-            case NOT_STATIC -> MessageBundler.message("run.blocker.notStatic");
-            case HAS_PARAMETERS -> MessageBundler.message("run.blocker.hasParameters");
+            case ABSTRACT_RECEIVER -> MessageBundler.message("run.blocker.abstractReceiver", className);
+            case ENUM_RECEIVER -> MessageBundler.message("run.blocker.enumReceiver", className);
+            case INNER_CLASS_RECEIVER -> MessageBundler.message("run.blocker.innerClassReceiver", className);
+            case NO_USABLE_CONSTRUCTOR -> MessageBundler.message("run.blocker.noUsableConstructor", className);
+            case UNSUPPORTED_PARAMETER_TYPE ->
+                    MessageBundler.message("run.blocker.unsupportedParameterType", unsupportedParameters(method));
         };
     }
 
+    private static String unsupportedParameters(MethodDescriptor method) {
+        return method.getParameters().stream()
+                .filter(parameter -> !parameter.isSupported())
+                .map(parameter -> parameter.getName() + ": " + parameter.getTypeFqn())
+                .collect(Collectors.joining(", "));
+    }
+
     private static void showError(Editor editor, String message) {
-        HintManager.getInstance().showErrorHint(editor, message);
+        // The hint renders HTML, so generic types such as List<String> must be escaped to stay visible.
+        HintManager.getInstance().showErrorHint(editor, StringUtil.escapeXmlEntities(message));
     }
 }

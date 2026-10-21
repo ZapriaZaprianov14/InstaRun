@@ -55,6 +55,42 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
         assertEquals("int", descriptor.getParameters().get(0).getTypeFqn());
     }
 
+    public void testClassWithoutDeclaredConstructorsGetsTheImplicitNoArgumentOne() {
+        ReceiverDescriptor receiver = describe("package a; public class Tool { int run() { return 1; } }", "run").getReceiver();
+
+        assertEquals(ReceiverDescriptor.Kind.INSTANTIABLE, receiver.getKind());
+        assertEquals(1, receiver.getConstructors().size());
+        assertTrue(receiver.getConstructors().get(0).getParameters().isEmpty());
+    }
+
+    public void testDeclaredConstructorsAreCapturedWithTheirParameters() {
+        ReceiverDescriptor receiver = describe(
+                "package a; public class Tool { public Tool(int size) {} private Tool(long id, boolean fast) {} int run() { return 1; } }",
+                "run").getReceiver();
+
+        assertEquals(2, receiver.getConstructors().size());
+        ConstructorDescriptor second = receiver.getConstructors().get(1);
+        assertEquals("id", second.getParameters().get(0).getName());
+        assertEquals("boolean", second.getParameters().get(1).getTypeFqn());
+    }
+
+    public void testStaticNestedClassesCanBeCreatedButInnerClassesCannot() {
+        String source = "package a; public class Outer { public static class Nested { int one() { return 1; } } "
+                + "public class Inner { int two() { return 2; } } }";
+
+        assertEquals(ReceiverDescriptor.Kind.INSTANTIABLE, describe(source, "one").getReceiver().getKind());
+        assertEquals(ReceiverDescriptor.Kind.INNER_CLASS, describe(source, "two").getReceiver().getKind());
+    }
+
+    public void testAbstractClassesInterfacesAndEnumsCannotBeCreated() {
+        assertEquals(ReceiverDescriptor.Kind.ABSTRACT,
+                describe("package a; public abstract class Base { int run() { return 1; } }", "run").getReceiver().getKind());
+        assertEquals(ReceiverDescriptor.Kind.ABSTRACT,
+                describe("package a; public interface Api { default int run() { return 1; } }", "run").getReceiver().getKind());
+        assertEquals(ReceiverDescriptor.Kind.ENUM,
+                describe("package a; public enum Mode { ON; int run() { return 1; } }", "run").getReceiver().getKind());
+    }
+
     private MethodDescriptor describe(String source, String methodName) {
         PsiFile file = myFixture.configureByText(JavaFileType.INSTANCE, source);
         PsiMethod method = PsiTreeUtil.findChildrenOfType(file, PsiMethod.class).stream()
