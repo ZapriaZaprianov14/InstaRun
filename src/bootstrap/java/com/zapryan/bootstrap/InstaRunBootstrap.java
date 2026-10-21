@@ -1,5 +1,7 @@
 package com.zapryan.bootstrap;
 
+import com.zapryan.reflection.ValueSpec;
+
 import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
@@ -7,8 +9,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 
 /**
- * Main class of the launched JVM. Exits with 1 when the invoked method throws, and with
- * {@link #EXIT_BOOTSTRAP_FAILURE} when the method could not be reached at all.
+ * Main class of the launched JVM. Exits with 1 when the user's code throws (the method or the receiver's
+ * constructor), and with {@link #EXIT_BOOTSTRAP_FAILURE} when the call could not be set up at all.
  */
 public final class InstaRunBootstrap {
 
@@ -27,17 +29,17 @@ public final class InstaRunBootstrap {
     }
 
     static int run(String[] args, PrintStream out, PrintStream err) throws Throwable {
+        ValueMaterializer values = new ValueMaterializer(InstaRunBootstrap.class.getClassLoader());
         Method method;
+        Object result;
         try {
-            method = resolveMethod(decodeRequest(args));
+            InvocationRequest request = decodeRequest(args);
+            method = resolveMethod(request, values);
+            Object receiver = receiverFor(method, request, values);
+            result = method.invoke(receiver, values.materializeAll(request.getArguments()));
         } catch (BootstrapFailure failure) {
             err.println(OUTPUT_PREFIX + failure.getMessage());
             return EXIT_BOOTSTRAP_FAILURE;
-        }
-
-        Object result;
-        try {
-            result = method.invoke(null);
         } catch (InvocationTargetException e) {
             throw e.getCause();
         }
@@ -57,45 +59,38 @@ public final class InstaRunBootstrap {
         }
     }
 
-    private static Method resolveMethod(InvocationRequest request) throws BootstrapFailure {
-        String className = request.getDeclaringClassBinaryName();
-        String methodLabel = className + "#" + request.getMethodName() + "()";
-
-        Class<?> declaringClass;
-        try {
-            declaringClass = Class.forName(className, false, InstaRunBootstrap.class.getClassLoader());
-        } catch (ClassNotFoundException e) {
-            throw new BootstrapFailure("Class " + className + " was not found on the classpath.");
-        } catch (LinkageError e) {
-            throw new BootstrapFailure("Class " + className + " could not be loaded: " + e);
-        }
-
+    private static Method resolveMethod(InvocationRequest request, ValueMaterializer values) throws BootstrapFailure {
+        Class<?> declaringClass = values.loadClass(request.getDeclaringClassBinaryName());
+        Class<?>[] parameterTypes = values.resolveTypes(request.getParameterTypeNames());
         Method method;
         try {
-            method = declaringClass.getDeclaredMethod(request.getMethodName());
+            method = declaringClass.getDeclaredMethod(request.getMethodName(), parameterTypes);
         } catch (NoSuchMethodException e) {
             throw new BootstrapFailure(
-                    "Method " + methodLabel + " was not found; the compiled class may be out of date.");
+                    "Method " + methodLabel(request) + " was not found; the compiled class may be out of date.");
         } catch (LinkageError e) {
             // getDeclaredMethod resolves the signature of every method in the class, not only the requested one.
-            throw new BootstrapFailure("The methods of " + className + " could not be read: " + e);
+            throw new BootstrapFailure("The methods of " + declaringClass.getName() + " could not be read: " + e);
         }
-
-        if (!Modifier.isStatic(method.getModifiers())) {
-            throw new BootstrapFailure("Method " + methodLabel + " is not static in the compiled class.");
-        }
-
-        try {
-            method.setAccessible(true);
-        } catch (RuntimeException e) {
-            throw new BootstrapFailure("Method " + methodLabel + " could not be made accessible: " + e);
-        }
+        ValueMaterializer.makeAccessible(method, "Method " + methodLabel(request));
         return method;
     }
 
-    private static final class BootstrapFailure extends Exception {
-        BootstrapFailure(String message) {
-            super(message);
+    private static Object receiverFor(Method method, InvocationRequest request, ValueMaterializer values)
+            throws BootstrapFailure, ReflectiveOperationException {
+        if (Modifier.isStatic(method.getModifiers())) {
+            return null;
         }
+        ValueSpec receiver = request.getReceiver();
+        if (receiver == null) {
+            throw new BootstrapFailure("Method " + methodLabel(request)
+                    + " is not static in the compiled class, and no receiver was given to call it on.");
+        }
+        return values.materialize(receiver);
+    }
+
+    private static String methodLabel(InvocationRequest request) {
+        return ValueMaterializer.signature(
+                request.getDeclaringClassBinaryName() + "#" + request.getMethodName(), request.getParameterTypeNames());
     }
 }
