@@ -11,8 +11,11 @@ import java.util.List;
 public enum RunBlocker {
     CONSTRUCTOR,
     LOCAL_OR_ANONYMOUS_CLASS,
-    NOT_STATIC,
-    HAS_PARAMETERS;
+    ABSTRACT_RECEIVER,
+    ENUM_RECEIVER,
+    INNER_CLASS_RECEIVER,
+    NO_USABLE_CONSTRUCTOR,
+    UNSUPPORTED_PARAMETER_TYPE;
 
     public static List<RunBlocker> findAll(MethodDescriptor method) {
         if (method.isConstructor()) {
@@ -21,13 +24,28 @@ public enum RunBlocker {
         List<RunBlocker> blockers = new ArrayList<>();
         if (method.getDeclaringClassBinaryName() == null) {
             blockers.add(LOCAL_OR_ANONYMOUS_CLASS);
+        } else if (!method.isStatic()) {
+            RunBlocker receiverBlocker = receiverBlocker(method.getReceiver());
+            if (receiverBlocker != null) {
+                blockers.add(receiverBlocker);
+            }
         }
-        if (!method.isStatic()) {
-            blockers.add(NOT_STATIC);
-        }
-        if (!method.getParameters().isEmpty()) {
-            blockers.add(HAS_PARAMETERS);
+        if (!method.getParameters().stream().allMatch(ParameterDescriptor::isSupported)) {
+            blockers.add(UNSUPPORTED_PARAMETER_TYPE);
         }
         return blockers;
+    }
+
+    private static RunBlocker receiverBlocker(ReceiverDescriptor receiver) {
+        switch (receiver.getKind()) {
+            case ABSTRACT:
+                return ABSTRACT_RECEIVER;
+            case ENUM:
+                return ENUM_RECEIVER;
+            case INNER_CLASS:
+                return INNER_CLASS_RECEIVER;
+            default:
+                return receiver.getUsableConstructors().isEmpty() ? NO_USABLE_CONSTRUCTOR : null;
+        }
     }
 }

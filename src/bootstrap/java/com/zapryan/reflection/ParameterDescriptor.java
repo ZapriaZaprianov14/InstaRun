@@ -8,4 +8,8 @@ import lombok.Getter;
 public final class ParameterDescriptor {
     private final String name;
     private final String typeFqn;
+
+    public boolean isSupported() {
+        return Literals.isSupported(typeFqn);
+    }
 }

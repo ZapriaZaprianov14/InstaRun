@@ -19,4 +19,5 @@ public final class MethodDescriptor {
     private final boolean isStatic;
     private final boolean isConstructor;
     private final List<ParameterDescriptor> parameters;
+    private final ReceiverDescriptor receiver;
 }
