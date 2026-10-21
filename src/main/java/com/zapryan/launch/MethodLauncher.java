@@ -10,6 +10,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.zapryan.bootstrap.InvocationRequest;
 import com.zapryan.reflection.MethodDescriptor;
+import com.zapryan.reflection.ParameterDescriptor;
 import com.zapryan.ui.MessageBundler;
 
 import java.util.List;
@@ -24,8 +25,10 @@ public final class MethodLauncher {
     }
 
     public static void launch(Project project, Module module, boolean inTestSources, MethodDescriptor method,
-                              Executor executor) {
-        InvocationRequest request = new InvocationRequest(method.getDeclaringClassBinaryName(), method.getMethodName());
+                              MethodInput input, Executor executor) {
+        List<String> parameterTypes = method.getParameters().stream().map(ParameterDescriptor::getTypeFqn).toList();
+        InvocationRequest request = new InvocationRequest(method.getDeclaringClassBinaryName(), method.getMethodName(),
+                parameterTypes, input.getReceiver(), input.getArguments());
 
         String name = MessageBundler.message("run.configuration.name",
                 StringUtil.getShortName(method.getDeclaringClassFqn()), method.getMethodName());
