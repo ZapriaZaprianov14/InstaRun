@@ -20,6 +20,7 @@
     <!-- Product and plugin compatibility requirements.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.java</depends>
+    <depends>com.intellij.modules.json</depends>
 
     <resource-bundle>messages.MessageBundler</resource-bundle>
 

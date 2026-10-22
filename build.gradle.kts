@@ -60,5 +60,6 @@ dependencies {
 
         // Add plugin dependencies for compilation here:
         bundledPlugin("com.intellij.java")
+        bundledPlugin("com.intellij.modules.json")
     }
 }
