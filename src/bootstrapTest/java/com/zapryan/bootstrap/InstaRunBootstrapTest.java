@@ -1,11 +1,13 @@
 package com.zapryan.bootstrap;
 
+import com.zapryan.reflection.SetterCall;
 import com.zapryan.reflection.ValueSpec;
 import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -18,6 +20,10 @@ public class InstaRunBootstrapTest {
 
     private static final String TARGETS = "com.zapryan.bootstrap.fixtures.TargetMethods";
     private static final String GREETER = TARGETS + "$Greeter";
+    private static final String BEANS = "com.zapryan.bootstrap.fixtures.BeanTargets";
+    private static final String PERSON = BEANS + "$Person";
+    private static final String TEAM = BEANS + "$Team";
+    private static final String STATUS = BEANS + "$Status";
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
@@ -139,6 +145,129 @@ public class InstaRunBootstrapTest {
     }
 
     @Test
+    public void buildsBeansWithAConstructorAndThenTheirSetters() throws Throwable {
+        ValueSpec person = new ValueSpec.Constructed(PERSON, types("java.lang.String", "int"),
+                Arrays.asList(literal("Ann"), literal(31)),
+                Collections.singletonList(setter(PERSON, "setEmail", "java.lang.String", literal("ann@example.com"))));
+
+        assertEquals(0, invoke(BEANS, "describe", types(PERSON), null, person));
+        assertEquals("[InstaRun] Result: Ann (31) ann@example.com", stdout());
+    }
+
+    @Test
+    public void callsInheritedSettersByTheirErasureAndPrivateSetters() throws Throwable {
+        ValueSpec label = new ValueSpec.Constructed(BEANS + "$Label", types(), Collections.<ValueSpec>emptyList(),
+                Arrays.asList(
+                        setter(BEANS + "$Named", "setValue", "java.lang.Object", literal("shown")),
+                        setter(BEANS + "$Label", "setSecret", "java.lang.String", literal("hidden"))));
+
+        assertEquals(0, invoke(BEANS, "label", types(BEANS + "$Label"), null, label));
+        assertEquals("[InstaRun] Result: shown hidden", stdout());
+    }
+
+    @Test
+    public void buildsNestedBeansCollectionsAndEnums() throws Throwable {
+        ValueSpec member = new ValueSpec.Constructed(PERSON, types("java.lang.String", "int"),
+                Arrays.asList(literal("Bo"), literal(40)));
+        ValueSpec team = new ValueSpec.Constructed(TEAM, types(), Collections.<ValueSpec>emptyList(), Arrays.asList(
+                setter(TEAM, "setMembers", "java.util.List",
+                        new ValueSpec.CollectionOf("java.util.ArrayList", Collections.singletonList(member))),
+                setter(TEAM, "setTags", "java.util.Collection",
+                        new ValueSpec.CollectionOf("java.util.TreeSet", Arrays.asList(literal("z"), literal("x")))),
+                setter(TEAM, "setStatus", STATUS, new ValueSpec.EnumConstant(STATUS, "ACTIVE"))));
+
+        assertEquals(0, invoke(BEANS, "describeTeam", types(TEAM), null, team));
+        assertEquals("[InstaRun] Result: [Bo (40) null] TreeSet[x, z] ACTIVE", stdout());
+    }
+
+    @Test
+    public void fillsCollectionsOfTheRequestedClassInOrder() throws Throwable {
+        ValueSpec tags = new ValueSpec.CollectionOf("java.util.LinkedHashSet",
+                Arrays.asList(literal("b"), literal("a"), literal("b")));
+
+        assertEquals(0, invoke(BEANS, "describeCollection", types("java.util.Collection"), null, tags));
+        assertEquals("[InstaRun] Result: LinkedHashSet[b, a]", stdout());
+    }
+
+    @Test
+    public void findsEnumConstantsThatHaveABody() throws Throwable {
+        assertEquals(0, invoke(BEANS, "status", types(STATUS), null, new ValueSpec.EnumConstant(STATUS, "RETIRED")));
+        assertEquals("[InstaRun] Result: RETIRED gone", stdout());
+    }
+
+    @Test
+    public void buildsArraysOfPrimitives() throws Throwable {
+        ValueSpec numbers = new ValueSpec.ArrayOf("int", Arrays.asList(literal(1), literal(2), literal(3)));
+
+        assertEquals(0, invoke(BEANS, "sum", types("int[]"), null, numbers));
+        assertEquals("[InstaRun] Result: sum 6", stdout());
+    }
+
+    @Test
+    public void buildsArraysOfArrays() throws Throwable {
+        ValueSpec rows = new ValueSpec.ArrayOf("java.lang.String[]", Arrays.<ValueSpec>asList(
+                new ValueSpec.ArrayOf("java.lang.String", Arrays.asList(literal("a"), literal("b"))),
+                new ValueSpec.ArrayOf("java.lang.String", Collections.singletonList(literal("c")))));
+
+        assertEquals(0, invoke(BEANS, "grid", types("java.lang.String[][]"), null, rows));
+        assertEquals("[InstaRun] Result: a,b;c;", stdout());
+    }
+
+    @Test
+    public void passesBigDecimalsWithTheirExactScale() throws Throwable {
+        assertEquals(0, invoke(BEANS, "price", types("java.math.BigDecimal"), null, literal(new BigDecimal("0.10"))));
+        assertEquals("[InstaRun] Result: 0.10 scale 2", stdout());
+    }
+
+    @Test
+    public void rethrowsASettersOwnExceptionUnwrapped() {
+        String fussy = BEANS + "$Fussy";
+        ValueSpec bean = new ValueSpec.Constructed(fussy, types(), Collections.<ValueSpec>emptyList(),
+                Collections.singletonList(setter(fussy, "setMood", "java.lang.String", literal("grumpy"))));
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> invoke(BEANS, "fussy", types(fussy), null, bean));
+
+        assertEquals("not in the mood: grumpy", thrown.getMessage());
+    }
+
+    @Test
+    public void reportsAMissingSetter() throws Throwable {
+        ValueSpec person = new ValueSpec.Constructed(PERSON, types("java.lang.String", "int"),
+                Arrays.asList(literal("Ann"), literal(31)),
+                Collections.singletonList(setter(PERSON, "setNickname", "java.lang.String", literal("A"))));
+
+        assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE, invoke(BEANS, "describe", types(PERSON), null, person));
+        assertTrue(stderr(), stderr().contains("Setter " + PERSON + "#setNickname(java.lang.String) was not found"));
+    }
+
+    @Test
+    public void reportsAMissingEnumConstant() throws Throwable {
+        assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE,
+                invoke(BEANS, "status", types(STATUS), null, new ValueSpec.EnumConstant(STATUS, "GONE")));
+        assertTrue(stderr(), stderr().contains("Enum " + STATUS + " has no constant GONE"));
+    }
+
+    @Test
+    public void reportsAnElementTheCollectionRefuses() throws Throwable {
+        ValueSpec person = new ValueSpec.Constructed(PERSON, types("java.lang.String", "int"),
+                Arrays.asList(literal("Ann"), literal(31)));
+        ValueSpec notComparable = new ValueSpec.CollectionOf("java.util.TreeSet", Collections.singletonList(person));
+
+        assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE,
+                invoke(BEANS, "describeCollection", types("java.util.Collection"), null, notComparable));
+        assertTrue(stderr(), stderr().contains("The element at index 0 could not be added to a java.util.TreeSet"));
+    }
+
+    @Test
+    public void reportsANullInAnArrayOfPrimitives() throws Throwable {
+        ValueSpec numbers = new ValueSpec.ArrayOf("int", Arrays.asList(literal(1), new ValueSpec.Null()));
+
+        assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE, invoke(BEANS, "sum", types("int[]"), null, numbers));
+        assertTrue(stderr(), stderr().contains("The element at index 1 cannot be stored in an array of int"));
+    }
+
+    @Test
     public void reportsAMalformedRequest() throws Throwable {
         assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE, run("not base64!"));
         assertTrue(stderr(), stderr().contains("Could not decode the invocation request"));
@@ -175,6 +304,10 @@ public class InstaRunBootstrapTest {
 
     private static ValueSpec receiver(String className, List<String> parameterTypes, ValueSpec... arguments) {
         return new ValueSpec.Constructed(className, parameterTypes, Arrays.asList(arguments));
+    }
+
+    private static SetterCall setter(String declaringClass, String methodName, String parameterType, ValueSpec value) {
+        return new SetterCall(declaringClass, methodName, parameterType, value);
     }
 
     private String stdout() {
