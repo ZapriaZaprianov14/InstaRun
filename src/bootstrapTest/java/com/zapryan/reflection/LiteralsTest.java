@@ -2,8 +2,12 @@ package com.zapryan.reflection;
 
 import org.junit.Test;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -21,6 +25,9 @@ public class LiteralsTest {
         assertEquals(Double.valueOf(2.25), Literals.parse("double", "2.25"));
         assertEquals(Integer.valueOf(5), Literals.parse("java.lang.Integer", "5"));
         assertEquals("text", Literals.parse("java.lang.String", "text"));
+        assertEquals(new BigInteger("123456789012345678901234567890"),
+                Literals.parse("java.math.BigInteger", "123456789012345678901234567890"));
+        assertEquals(new BigDecimal("0.10"), Literals.parse("java.math.BigDecimal", "0.10"));
     }
 
     @Test
@@ -55,5 +62,16 @@ public class LiteralsTest {
         assertFalse(Literals.isNullable("int"));
         assertTrue(Literals.isNullable("java.lang.Integer"));
         assertTrue(Literals.isNullable("java.lang.String"));
+        assertTrue(Literals.isNullable("java.math.BigDecimal"));
+    }
+
+    @Test
+    public void knowsHowEachTypeIsWritten() {
+        assertEquals(Literals.Kind.TEXT, Literals.kindOf("java.lang.String"));
+        assertEquals(Literals.Kind.CHARACTER, Literals.kindOf("char"));
+        assertEquals(Literals.Kind.BOOLEAN, Literals.kindOf("java.lang.Boolean"));
+        assertEquals(Literals.Kind.INTEGER, Literals.kindOf("java.math.BigInteger"));
+        assertEquals(Literals.Kind.DECIMAL, Literals.kindOf("float"));
+        assertNull(Literals.kindOf("java.util.Date"));
     }
 }
