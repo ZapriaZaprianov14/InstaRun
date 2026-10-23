@@ -15,6 +15,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.awt.*;
 
+// TODO to remove later
 public class InstaRunAction extends AnAction {
 
     @Override
