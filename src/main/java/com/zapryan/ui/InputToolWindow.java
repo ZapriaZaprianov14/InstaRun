@@ -9,6 +9,7 @@ import java.awt.*;
 import java.awt.event.ActionListener;
 import java.util.Random;
 
+// TODO: future removal
 public class InputToolWindow {
     private final JBPanel<JBPanel<?>> content;
     private final JButton shuffleButton;
