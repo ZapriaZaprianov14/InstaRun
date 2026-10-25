@@ -36,7 +36,7 @@ public class InputToolWindow {
         content.add(shuffleButton);
     }
 
-    private Integer getRandomInt(){
+    private static Integer getRandomInt(){
         return new Random().nextInt(1000);
     }
 }
