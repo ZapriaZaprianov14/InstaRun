@@ -94,6 +94,7 @@ abstract class MethodLaunchAction extends AnAction {
             case NO_USABLE_CONSTRUCTOR -> MessageBundler.message("run.blocker.noUsableConstructor", className);
             case UNSUPPORTED_PARAMETER_TYPE ->
                     MessageBundler.message("run.blocker.unsupportedParameterType", unsupportedParameters(method));
+            case GETTER_OR_SETTER -> MessageBundler.message("run.blocker.getterOrSetter");
         };
     }
 

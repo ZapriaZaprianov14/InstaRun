@@ -76,6 +76,42 @@ public class RunBlockerTest {
                 RunBlocker.findAll(method("com.acme.Tool", false, true, NO_ARGUMENT_CONSTRUCTOR, ITEMS)));
     }
 
+    @Test
+    public void settersAreBlockedRegardlessOfReturnType() {
+        assertEquals(List.of(RunBlocker.GETTER_OR_SETTER),
+                RunBlocker.findAll(namedInstanceMethod("setName", "void", NAME)));
+        assertEquals(List.of(RunBlocker.GETTER_OR_SETTER),
+                RunBlocker.findAll(namedInstanceMethod("setName", "com.acme.Tool", NAME)));
+    }
+
+    @Test
+    public void gettersAreBlockedButNotAVoidOrMisnamedOne() {
+        assertEquals(List.of(RunBlocker.GETTER_OR_SETTER),
+                RunBlocker.findAll(namedInstanceMethod("getName", "java.lang.String")));
+        assertEquals(List.of(), RunBlocker.findAll(namedInstanceMethod("getName", "void")));
+        assertEquals(List.of(), RunBlocker.findAll(namedInstanceMethod("get", "java.lang.String")));
+    }
+
+    @Test
+    public void booleanIsGettersAreBlockedButNonBooleanOnesAreNot() {
+        assertEquals(List.of(RunBlocker.GETTER_OR_SETTER),
+                RunBlocker.findAll(namedInstanceMethod("isEmpty", "boolean")));
+        assertEquals(List.of(), RunBlocker.findAll(namedInstanceMethod("isEmpty", "java.lang.String")));
+    }
+
+    @Test
+    public void staticMethodsAreNeverTreatedAsGettersOrSetters() {
+        assertEquals(List.of(), RunBlocker.findAll(
+                method("com.acme.Tool", true, false, "getInstance", "com.acme.Tool", NO_ARGUMENT_CONSTRUCTOR)));
+    }
+
+    @Test
+    public void aFluentSetterIsStillBlockedEvenIfCombinedWithOtherBlockers() {
+        assertEquals(List.of(RunBlocker.ENUM_RECEIVER, RunBlocker.GETTER_OR_SETTER),
+                RunBlocker.findAll(method("com.acme.Tool", false, false, "setName",
+                        "com.acme.Tool", cannotBeCreated(ReceiverDescriptor.Kind.ENUM), NAME)));
+    }
+
     private static MethodDescriptor staticMethod(ParameterDescriptor... parameters) {
         return method("com.acme.Tool", true, false, NO_ARGUMENT_CONSTRUCTOR, parameters);
     }
@@ -84,9 +120,20 @@ public class RunBlockerTest {
         return method("com.acme.Tool", false, false, receiver, parameters);
     }
 
+    private static MethodDescriptor namedInstanceMethod(String methodName, String returnTypeFqn,
+                                                        ParameterDescriptor... parameters) {
+        return method("com.acme.Tool", false, false, methodName, returnTypeFqn, NO_ARGUMENT_CONSTRUCTOR, parameters);
+    }
+
     private static MethodDescriptor method(String binaryName, boolean isStatic, boolean isConstructor,
                                            ReceiverDescriptor receiver, ParameterDescriptor... parameters) {
-        return new MethodDescriptor("com.acme.Tool", binaryName, "run", "void", isStatic, isConstructor,
+        return method(binaryName, isStatic, isConstructor, "run", "void", receiver, parameters);
+    }
+
+    private static MethodDescriptor method(String binaryName, boolean isStatic, boolean isConstructor,
+                                           String methodName, String returnTypeFqn, ReceiverDescriptor receiver,
+                                           ParameterDescriptor... parameters) {
+        return new MethodDescriptor("com.acme.Tool", binaryName, methodName, returnTypeFqn, isStatic, isConstructor,
                 List.of(parameters), receiver);
     }
 
