@@ -26,7 +26,8 @@ public final class MethodLauncher {
 
     public static void launch(Project project, Module module, boolean inTestSources, MethodDescriptor method,
                               MethodInput input, Executor executor) {
-        List<String> parameterTypes = method.getParameters().stream().map(ParameterDescriptor::getTypeFqn).toList();
+        List<String> parameterTypes =
+                method.getParameters().stream().map(ParameterDescriptor::getErasedTypeName).toList();
         InvocationRequest request = new InvocationRequest(method.getDeclaringClassBinaryName(), method.getMethodName(),
                 parameterTypes, input.getReceiver(), input.getArguments());
 
