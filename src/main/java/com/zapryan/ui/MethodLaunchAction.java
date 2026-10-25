@@ -95,6 +95,8 @@ abstract class MethodLaunchAction extends AnAction {
             case UNSUPPORTED_PARAMETER_TYPE ->
                     MessageBundler.message("run.blocker.unsupportedParameterType", unsupportedParameters(method));
             case GETTER_OR_SETTER -> MessageBundler.message("run.blocker.getterOrSetter");
+            case SPRING_BEAN_RECEIVER -> MessageBundler.message("run.blocker.springBeanReceiver", className,
+                    method.getReceiver().getSpringEvidence());
         };
     }
 

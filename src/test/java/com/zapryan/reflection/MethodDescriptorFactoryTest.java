@@ -166,6 +166,48 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
         assertEquals("a.Outer.Inner[]", parameter.getTypeFqn());
     }
 
+    public void testClassesWithASpringStereotypeAreSpringBeans() {
+        addSpringStubs();
+
+        ReceiverDescriptor component = describe(
+                "package a; import org.springframework.stereotype.Component; @Component public class Tool { int run() { return 1; } }",
+                "run").getReceiver();
+        assertEquals(ReceiverDescriptor.Kind.SPRING_BEAN, component.getKind());
+        assertEquals("@Component", component.getSpringEvidence());
+        assertTrue(component.getConstructors().isEmpty());
+
+        ReceiverDescriptor service = describe(
+                "package a; import org.springframework.stereotype.Service; @Service public class Orders { int run() { return 1; } }",
+                "run").getReceiver();
+        assertEquals(ReceiverDescriptor.Kind.SPRING_BEAN, service.getKind());
+        assertEquals("@Service", service.getSpringEvidence());
+    }
+
+    public void testClassesWithInjectedDependenciesAreSpringBeansEvenWhenInherited() {
+        addSpringStubs();
+
+        ReceiverDescriptor receiver = describe(
+                "package a; import org.springframework.beans.factory.annotation.Autowired; "
+                        + "public class Orders extends Base { int run() { return 1; } } "
+                        + "class Base { @Autowired Repository repository; } class Repository {}",
+                "run").getReceiver();
+
+        assertEquals(ReceiverDescriptor.Kind.SPRING_BEAN, receiver.getKind());
+        assertEquals("@Autowired", receiver.getSpringEvidence());
+    }
+
+    public void testPlainAndAbstractClassesAreNotSpringBeans() {
+        addSpringStubs();
+
+        ReceiverDescriptor plain = describe("package a; public class Tool { int run() { return 1; } }", "run").getReceiver();
+        assertEquals(ReceiverDescriptor.Kind.INSTANTIABLE, plain.getKind());
+        assertNull(plain.getSpringEvidence());
+
+        assertEquals(ReceiverDescriptor.Kind.ABSTRACT, describe(
+                "package a; import org.springframework.stereotype.Service; @Service public abstract class Base { int run() { return 1; } }",
+                "run").getReceiver().getKind());
+    }
+
     /** The light fixture has no JDK, so the few JDK types these tests need are declared as project sources. */
     private void addJdkStubs() {
         myFixture.addFileToProject("java/lang/String.java", "package java.lang; public final class String {}");
@@ -173,6 +215,16 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
         myFixture.addFileToProject("java/util/List.java",
                 "package java.util; public interface List<E> extends Collection<E> {}");
         myFixture.addFileToProject("java/util/Map.java", "package java.util; public interface Map<K, V> {}");
+    }
+
+    /** The Spring annotations the guard looks for, declared as project sources since the fixture has no Spring. */
+    private void addSpringStubs() {
+        myFixture.addFileToProject("org/springframework/stereotype/Component.java",
+                "package org.springframework.stereotype; public @interface Component {}");
+        myFixture.addFileToProject("org/springframework/stereotype/Service.java",
+                "package org.springframework.stereotype; @Component public @interface Service {}");
+        myFixture.addFileToProject("org/springframework/beans/factory/annotation/Autowired.java",
+                "package org.springframework.beans.factory.annotation; public @interface Autowired {}");
     }
 
     private static List<String> namesOf(List<PropertyDescriptor> properties) {

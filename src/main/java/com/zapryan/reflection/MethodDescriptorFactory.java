@@ -1,20 +1,31 @@
 package com.zapryan.reflection;
 
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiMethod;
-import com.intellij.psi.PsiModifier;
-import com.intellij.psi.PsiSubstitutor;
-import com.intellij.psi.PsiType;
+import com.intellij.codeInsight.AnnotationUtil;
+import com.intellij.codeInsight.MetaAnnotationUtil;
+import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.psi.*;
 import com.intellij.psi.util.ClassUtil;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Reads a {@link PsiMethod} into a {@link MethodDescriptor}. Must run inside a read action;
  * the returned descriptor is plain data and safe to use Afterward without one.
  */
 public final class MethodDescriptorFactory {
+
+    private static final String SPRING_COMPONENT = "org.springframework.stereotype.Component";
+    private static final Set<String> INJECTION_ANNOTATIONS = Set.of(
+            "org.springframework.beans.factory.annotation.Autowired",
+            "org.springframework.beans.factory.annotation.Value",
+            "javax.inject.Inject",
+            "jakarta.inject.Inject",
+            "javax.annotation.Resource",
+            "jakarta.annotation.Resource");
 
     private MethodDescriptorFactory() {
     }
@@ -52,10 +63,41 @@ public final class MethodDescriptorFactory {
             return new ReceiverDescriptor(ReceiverDescriptor.Kind.ABSTRACT, List.of());
         }
         ReceiverDescriptor.Kind kind = kindOf(declaringClass);
+        if (kind == ReceiverDescriptor.Kind.INSTANTIABLE) {
+            String springEvidence = springEvidenceOf(declaringClass);
+            if (springEvidence != null) {
+                return new ReceiverDescriptor(ReceiverDescriptor.Kind.SPRING_BEAN, List.of(), springEvidence);
+            }
+        }
         List<ConstructorDescriptor> constructors = kind == ReceiverDescriptor.Kind.INSTANTIABLE
                 ? types.constructorsOf(declaringClass, PsiSubstitutor.EMPTY)
                 : List.of();
         return new ReceiverDescriptor(kind, constructors);
+    }
+
+    /**
+     * The annotation that shows Spring manages the class, or null if nothing does: a stereotype, i.e. an annotation
+     * that is or is built on {@code @Component} such as {@code @Service}, or an injection point on a field, setter or
+     * constructor, inherited ones included. A class registered only through a {@code @Bean} method and without
+     * injection annotations isn't recognized.
+     */
+    private static @Nullable String springEvidenceOf(PsiClass aClass) {
+        PsiClass stereotype = MetaAnnotationUtil.findAnnotationsByMeta(aClass, List.of(SPRING_COMPONENT))
+                .findFirst()
+                .orElse(null);
+        if (stereotype != null) {
+            return "@" + stereotype.getName();
+        }
+        List<PsiModifierListOwner> injectionPoints = new ArrayList<>(Arrays.asList(aClass.getAllFields()));
+        injectionPoints.addAll(Arrays.asList(aClass.getAllMethods()));
+        injectionPoints.addAll(Arrays.asList(aClass.getConstructors()));
+        for (PsiModifierListOwner member : injectionPoints) {
+            PsiAnnotation injection = AnnotationUtil.findAnnotation(member, INJECTION_ANNOTATIONS);
+            if (injection != null && injection.getQualifiedName() != null) {
+                return "@" + StringUtil.getShortName(injection.getQualifiedName());
+            }
+        }
+        return null;
     }
 
     private static ReceiverDescriptor.Kind kindOf(PsiClass aClass) {

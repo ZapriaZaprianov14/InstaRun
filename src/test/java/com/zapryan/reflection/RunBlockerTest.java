@@ -112,6 +112,14 @@ public class RunBlockerTest {
                         "com.acme.Tool", cannotBeCreated(ReceiverDescriptor.Kind.ENUM), NAME)));
     }
 
+    @Test
+    public void instanceMethodsOfSpringBeansAreBlockedButTheirStaticMethodsAreNot() {
+        ReceiverDescriptor springBean = new ReceiverDescriptor(ReceiverDescriptor.Kind.SPRING_BEAN, List.of(), "@Service");
+
+        assertEquals(List.of(RunBlocker.SPRING_BEAN_RECEIVER), RunBlocker.findAll(instanceMethod(springBean, COUNT)));
+        assertEquals(List.of(), RunBlocker.findAll(method("com.acme.Tool", true, false, springBean, COUNT)));
+    }
+
     private static MethodDescriptor staticMethod(ParameterDescriptor... parameters) {
         return method("com.acme.Tool", true, false, NO_ARGUMENT_CONSTRUCTOR, parameters);
     }
