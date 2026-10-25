@@ -100,8 +100,9 @@ abstract class MethodLaunchAction extends AnAction {
     private static String unsupportedParameters(MethodDescriptor method) {
         return method.getParameters().stream()
                 .filter(parameter -> !parameter.isSupported())
-                .map(parameter -> parameter.getName() + ": " + parameter.getTypeFqn())
-                .collect(Collectors.joining(", "));
+                .map(parameter -> MessageBundler.message("run.blocker.unsupportedParameter", parameter.getName(),
+                        InputMessages.whyUnsupported(parameter.getType())))
+                .collect(Collectors.joining("; "));
     }
 
     private static void showError(Editor editor, String message) {

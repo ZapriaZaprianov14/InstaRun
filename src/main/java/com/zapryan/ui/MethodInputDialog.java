@@ -7,6 +7,7 @@ import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.util.ui.FormBuilder;
@@ -35,11 +36,12 @@ final class MethodInputDialog extends DialogWrapper {
 
     private static final String KEY_PREFIX = "instarun.input.";
 
+    private final Project project;
     private final MethodDescriptor method;
     private final PropertiesComponent storage;
-    private final List<ArgumentField> argumentFields;
+    private final List<ValueEditor> argumentFields;
     private final @Nullable ComboBox<ConstructorDescriptor> constructorBox;
-    private final Map<ConstructorDescriptor, List<ArgumentField>> constructorFields = new HashMap<>();
+    private final Map<ConstructorDescriptor, List<ValueEditor>> constructorFields = new HashMap<>();
     private final JPanel root = new JPanel(new BorderLayout());
 
     /**
@@ -64,6 +66,7 @@ final class MethodInputDialog extends DialogWrapper {
     private MethodInputDialog(Project project, MethodDescriptor method, List<ConstructorDescriptor> constructors,
                               Executor executor) {
         super(project);
+        this.project = project;
         this.method = method;
         this.storage = PropertiesComponent.getInstance(project);
         this.argumentFields = fieldsFor(method.getParameters(), methodKey());
@@ -76,13 +79,14 @@ final class MethodInputDialog extends DialogWrapper {
     @Override
     protected @Nullable JComponent createCenterPanel() {
         layoutFields();
-        return root;
+        // Several bean parameters can be taller than the screen; the dialog then scrolls instead of cutting them off.
+        return ScrollPaneFactory.createScrollPane(root, true);
     }
 
     @Override
     protected @NotNull List<ValidationInfo> doValidateAll() {
         List<ValidationInfo> problems = new ArrayList<>();
-        for (ArgumentField field : visibleFields()) {
+        for (ValueEditor field : visibleFields()) {
             ValidationInfo problem = field.validate();
             if (problem != null) {
                 problems.add(problem);
@@ -93,7 +97,7 @@ final class MethodInputDialog extends DialogWrapper {
 
     @Override
     protected void doOKAction() {
-        visibleFields().forEach(ArgumentField::save);
+        visibleFields().forEach(ValueEditor::save);
         if (constructorBox != null) {
             storage.setValue(selectedConstructorKey(), signatureOf(selectedConstructor().getParameters()));
         }
@@ -105,7 +109,7 @@ final class MethodInputDialog extends DialogWrapper {
         if (constructorBox != null) {
             ConstructorDescriptor constructor = selectedConstructor();
             receiver = new ValueSpec.Constructed(method.getDeclaringClassBinaryName(),
-                    typesOf(constructor.getParameters()), valuesOf(selectedConstructorFields()));
+                    erasedTypesOf(constructor.getParameters()), valuesOf(selectedConstructorFields()));
         }
         return new MethodInput(receiver, valuesOf(argumentFields));
     }
@@ -137,14 +141,14 @@ final class MethodInputDialog extends DialogWrapper {
         root.revalidate();
     }
 
-    private static void addFields(FormBuilder form, List<ArgumentField> fields) {
-        for (ArgumentField field : fields) {
-            form.addLabeledComponent(field.label(), field.component());
+    private static void addFields(FormBuilder form, List<ValueEditor> fields) {
+        for (ValueEditor field : fields) {
+            form.addLabeledComponent(field.label(), field.component(), field.isTall());
         }
     }
 
-    private List<ArgumentField> visibleFields() {
-        List<ArgumentField> fields = new ArrayList<>();
+    private List<ValueEditor> visibleFields() {
+        List<ValueEditor> fields = new ArrayList<>();
         if (constructorBox != null) {
             fields.addAll(selectedConstructorFields());
         }
@@ -152,7 +156,7 @@ final class MethodInputDialog extends DialogWrapper {
         return fields;
     }
 
-    private List<ArgumentField> selectedConstructorFields() {
+    private List<ValueEditor> selectedConstructorFields() {
         return constructorFields.computeIfAbsent(selectedConstructor(),
                 constructor -> fieldsFor(constructor.getParameters(), constructorKey(constructor)));
     }
@@ -176,15 +180,16 @@ final class MethodInputDialog extends DialogWrapper {
         return constructors.get(0);
     }
 
-    private List<ArgumentField> fieldsFor(List<ParameterDescriptor> parameters, String keyPrefix) {
+    private List<ValueEditor> fieldsFor(List<ParameterDescriptor> parameters, String keyPrefix) {
         return parameters.stream()
-                .map(parameter -> new ArgumentField(parameter, storage, keyPrefix + parameter.getName()))
+                .map(parameter -> ValueEditor.forParameter(parameter, project, storage, keyPrefix + parameter.getName(),
+                        problem -> setErrorInfoAll(problem != null ? List.of(problem) : List.of())))
                 .toList();
     }
 
     private String describe(ConstructorDescriptor constructor) {
         String parameters = constructor.getParameters().stream()
-                .map(parameter -> StringUtil.getShortName(parameter.getTypeFqn()) + " " + parameter.getName())
+                .map(parameter -> parameter.getType().getDisplayName() + " " + parameter.getName())
                 .collect(Collectors.joining(", "));
         return className() + "(" + parameters + ")";
     }
@@ -207,14 +212,14 @@ final class MethodInputDialog extends DialogWrapper {
     }
 
     private static String signatureOf(List<ParameterDescriptor> parameters) {
-        return String.join(",", typesOf(parameters));
+        return parameters.stream().map(ParameterDescriptor::getTypeFqn).collect(Collectors.joining(","));
     }
 
-    private static List<String> typesOf(List<ParameterDescriptor> parameters) {
-        return parameters.stream().map(ParameterDescriptor::getTypeFqn).toList();
+    private static List<String> erasedTypesOf(List<ParameterDescriptor> parameters) {
+        return parameters.stream().map(ParameterDescriptor::getErasedTypeName).toList();
     }
 
-    private static List<ValueSpec> valuesOf(List<ArgumentField> fields) {
-        return fields.stream().map(ArgumentField::toValueSpec).toList();
+    private static List<ValueSpec> valuesOf(List<ValueEditor> fields) {
+        return fields.stream().map(ValueEditor::toValueSpec).toList();
     }
 }
