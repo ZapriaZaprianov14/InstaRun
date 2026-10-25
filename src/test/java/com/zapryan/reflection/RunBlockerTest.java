@@ -8,9 +8,11 @@ import static org.junit.Assert.assertEquals;
 
 public class RunBlockerTest {
 
-    private static final ParameterDescriptor COUNT = new ParameterDescriptor("count", "int");
-    private static final ParameterDescriptor NAME = new ParameterDescriptor("name", "java.lang.String");
-    private static final ParameterDescriptor ITEMS = new ParameterDescriptor("items", "java.util.List<java.lang.String>");
+    private static final ParameterDescriptor COUNT = literal("count", "int");
+    private static final ParameterDescriptor NAME = literal("name", "java.lang.String");
+    private static final ParameterDescriptor ITEMS = new ParameterDescriptor("items",
+            "java.util.Map<java.lang.String,java.lang.Object>", "java.util.Map",
+            new TypeDescriptor.UnsupportedType("Map<String, Object>", "maps are not supported"));
     private static final ReceiverDescriptor NO_ARGUMENT_CONSTRUCTOR = new ReceiverDescriptor(
             ReceiverDescriptor.Kind.INSTANTIABLE, List.of(new ConstructorDescriptor(List.of())));
 
@@ -90,5 +92,9 @@ public class RunBlockerTest {
 
     private static ReceiverDescriptor cannotBeCreated(ReceiverDescriptor.Kind kind) {
         return new ReceiverDescriptor(kind, List.of());
+    }
+
+    private static ParameterDescriptor literal(String name, String type) {
+        return new ParameterDescriptor(name, type, type, new TypeDescriptor.LiteralType(type, type));
     }
 }

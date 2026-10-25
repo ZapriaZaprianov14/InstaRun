@@ -6,6 +6,8 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 
+import java.util.List;
+
 public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
 
     public void testTopLevelClassIsIdentifiedByItsQualifiedName() {
@@ -89,6 +91,92 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
                 describe("package a; public interface Api { default int run() { return 1; } }", "run").getReceiver().getKind());
         assertEquals(ReceiverDescriptor.Kind.ENUM,
                 describe("package a; public enum Mode { ON; int run() { return 1; } }", "run").getReceiver().getKind());
+    }
+
+    public void testBeanPropertiesComeFromItsConstructorsAndSetters() {
+        TypeDescriptor.BeanType order = (TypeDescriptor.BeanType) describe(
+                "package a; public class Shop { static void buy(Order order) {} } class Order { Order(int id) {} "
+                        + "public void setCount(int count) {} private void setNote(char note) {} "
+                        + "static void setGlobal(int global) {} void setup() {} }",
+                "buy").getParameters().get(0).getType();
+
+        assertEquals("a.Order", order.getBinaryName());
+        assertEquals(List.of("id", "count", "note"), namesOf(order.getProperties()));
+    }
+
+    public void testInheritedSettersSeeTheSubclassTypeArguments() {
+        TypeDescriptor.BeanType box = (TypeDescriptor.BeanType) describe(
+                "package a; public class Shop { static void buy(Box box) {} } "
+                        + "class Holder<T> { public void setValue(T value) {} } class Box extends Holder<Item> {} "
+                        + "class Item { public void setWeight(int weight) {} }",
+                "buy").getParameters().get(0).getType();
+
+        SetterDescriptor value = box.findSetter("value");
+        assertEquals("a.Holder", value.getDeclaringClassBinaryName());
+        assertEquals("java.lang.Object", value.getErasedParameterTypeName());
+        assertEquals("a.Item", ((TypeDescriptor.BeanType) value.getType()).getBinaryName());
+    }
+
+    public void testASelfReferencingBeanIsDescribedOnce() {
+        TypeDescriptor.BeanType node = (TypeDescriptor.BeanType) describe(
+                "package a; public class Tree { static void walk(Node node) {} } "
+                        + "class Node { public void setNext(Node next) {} }",
+                "walk").getParameters().get(0).getType();
+
+        assertSame(node, node.findSetter("next").getType());
+    }
+
+    public void testCollectionsArraysAndEnumsAreDescribed() {
+        addJdkStubs();
+        List<ParameterDescriptor> parameters = describe(
+                "package a; import java.util.List; import java.util.Map; public class Shop { "
+                        + "static void buy(List<Item> items, Size[] sizes, Map<String, Item> byName) {} } "
+                        + "enum Size { S, M, L } class Item {}",
+                "buy").getParameters();
+
+        TypeDescriptor.CollectionType items = (TypeDescriptor.CollectionType) parameters.get(0).getType();
+        assertEquals("java.util.ArrayList", items.getImplementationClassName());
+        assertEquals("a.Item", ((TypeDescriptor.BeanType) items.getElementType()).getBinaryName());
+        assertEquals("java.util.List", parameters.get(0).getErasedTypeName());
+
+        TypeDescriptor.ArrayType sizes = (TypeDescriptor.ArrayType) parameters.get(1).getType();
+        assertEquals(List.of("S", "M", "L"), ((TypeDescriptor.EnumType) sizes.getElementType()).getConstants());
+        assertEquals("a.Size[]", parameters.get(1).getErasedTypeName());
+
+        assertFalse(parameters.get(2).isSupported());
+    }
+
+    public void testTypesWithoutAClassToBuildAreUnsupported() {
+        List<ParameterDescriptor> parameters = describe(
+                "package a; public class Shop { <T> void buy(Api api, Inner inner, T anything) {} class Inner {} } "
+                        + "interface Api {}",
+                "buy").getParameters();
+
+        assertFalse(parameters.get(0).isSupported());
+        assertFalse(parameters.get(1).isSupported());
+        assertFalse(parameters.get(2).isSupported());
+    }
+
+    public void testParameterTypesAreErasedToBinaryNames() {
+        ParameterDescriptor parameter = describe(
+                "package a; public class Outer { static void run(Inner[] values) {} static class Inner {} }",
+                "run").getParameters().get(0);
+
+        assertEquals("a.Outer$Inner[]", parameter.getErasedTypeName());
+        assertEquals("a.Outer.Inner[]", parameter.getTypeFqn());
+    }
+
+    /** The light fixture has no JDK, so the few JDK types these tests need are declared as project sources. */
+    private void addJdkStubs() {
+        myFixture.addFileToProject("java/lang/String.java", "package java.lang; public final class String {}");
+        myFixture.addFileToProject("java/util/Collection.java", "package java.util; public interface Collection<E> {}");
+        myFixture.addFileToProject("java/util/List.java",
+                "package java.util; public interface List<E> extends Collection<E> {}");
+        myFixture.addFileToProject("java/util/Map.java", "package java.util; public interface Map<K, V> {}");
+    }
+
+    private static List<String> namesOf(List<PropertyDescriptor> properties) {
+        return properties.stream().map(PropertyDescriptor::getName).toList();
     }
 
     private MethodDescriptor describe(String source, String methodName) {
