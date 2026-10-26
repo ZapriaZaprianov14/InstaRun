@@ -47,8 +47,10 @@ final class MethodInputDialog extends DialogWrapper {
     /**
      * Returns the values to call the method with, or null if the user cancelled. Shows the dialog only when there
      * is something to enter or choose; a runnable method is expected, i.e. one with no {@code RunBlocker}.
+     *
+     * @param okText the button that confirms, e.g. Run
      */
-    static @Nullable MethodInput ask(Project project, MethodDescriptor method, Executor executor) {
+    static @Nullable MethodInput ask(Project project, MethodDescriptor method, String title, String okText) {
         List<ConstructorDescriptor> constructors =
                 method.isStatic() ? List.of() : method.getReceiver().getUsableConstructors();
         boolean nothingToChoose = constructors.isEmpty()
@@ -59,20 +61,20 @@ final class MethodInputDialog extends DialogWrapper {
                     : new ValueSpec.Constructed(method.getDeclaringClassBinaryName(), List.of(), List.of());
             return new MethodInput(receiver, List.of());
         }
-        MethodInputDialog dialog = new MethodInputDialog(project, method, constructors, executor);
+        MethodInputDialog dialog = new MethodInputDialog(project, method, constructors, title, okText);
         return dialog.showAndGet() ? dialog.input() : null;
     }
 
     private MethodInputDialog(Project project, MethodDescriptor method, List<ConstructorDescriptor> constructors,
-                              Executor executor) {
+                              String title, String okText) {
         super(project);
         this.project = project;
         this.method = method;
         this.storage = PropertiesComponent.getInstance(project);
         this.argumentFields = fieldsFor(method.getParameters(), methodKey());
         this.constructorBox = constructors.isEmpty() ? null : createConstructorBox(constructors);
-        setTitle(MessageBundler.message("dialog.title", executor.getActionName(), className(), method.getMethodName()));
-        setOKButtonText(executor.getActionName());
+        setTitle(title);
+        setOKButtonText(okText);
         init();
     }
 

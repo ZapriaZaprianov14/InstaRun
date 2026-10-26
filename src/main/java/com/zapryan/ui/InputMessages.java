@@ -1,13 +1,50 @@
 package com.zapryan.ui;
 
+import com.intellij.openapi.util.text.StringUtil;
 import com.zapryan.json.JsonBindingException;
 import com.zapryan.json.JsonProblem;
+import com.zapryan.reflection.MethodDescriptor;
+import com.zapryan.reflection.RunBlocker;
 import com.zapryan.reflection.TypeDescriptor;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 /** Turns the reflection model's reasons and problems into the messages shown to the user. */
 public final class InputMessages {
 
     private InputMessages() {
+    }
+
+    /** Why the method can't be run, e.g. {@code Cannot run 'save()'. It is an instance method of ...}. */
+    public static String whyBlocked(MethodDescriptor method, List<RunBlocker> blockers) {
+        String reasons = blockers.stream().map(blocker -> describe(blocker, method)).collect(Collectors.joining(" "));
+        return MessageBundler.message("run.blocked", method.getMethodName(), reasons);
+    }
+
+    private static String describe(RunBlocker blocker, MethodDescriptor method) {
+        String className = StringUtil.getShortName(method.getDeclaringClassFqn());
+        return switch (blocker) {
+            case CONSTRUCTOR -> MessageBundler.message("run.blocker.constructor");
+            case LOCAL_OR_ANONYMOUS_CLASS -> MessageBundler.message("run.blocker.localOrAnonymousClass");
+            case ABSTRACT_RECEIVER -> MessageBundler.message("run.blocker.abstractReceiver", className);
+            case ENUM_RECEIVER -> MessageBundler.message("run.blocker.enumReceiver", className);
+            case INNER_CLASS_RECEIVER -> MessageBundler.message("run.blocker.innerClassReceiver", className);
+            case SPRING_BEAN_RECEIVER -> MessageBundler.message("run.blocker.springBeanReceiver", className,
+                    method.getReceiver().getSpringEvidence());
+            case NO_USABLE_CONSTRUCTOR -> MessageBundler.message("run.blocker.noUsableConstructor", className);
+            case UNSUPPORTED_PARAMETER_TYPE ->
+                    MessageBundler.message("run.blocker.unsupportedParameterType", unsupportedParameters(method));
+            case GETTER_OR_SETTER -> MessageBundler.message("run.blocker.getterOrSetter");
+        };
+    }
+
+    private static String unsupportedParameters(MethodDescriptor method) {
+        return method.getParameters().stream()
+                .filter(parameter -> !parameter.isSupported())
+                .map(parameter -> MessageBundler.message("run.blocker.unsupportedParameter", parameter.getName(),
+                        whyUnsupported(parameter.getType())))
+                .collect(Collectors.joining("; "));
     }
 
     /** Why no value of the type can be entered yet, naming the type that is the actual obstacle. */

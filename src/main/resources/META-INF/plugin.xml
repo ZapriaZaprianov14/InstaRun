@@ -30,6 +30,7 @@
         <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.ui.InputToolWindowFactory"
                     icon="AllIcons.Toolwindows.ToolWindowPalette"/>
         <configurationType implementation="com.zapryan.launch.InstaRunConfigurationType"/>
+        <notificationGroup id="InstaRun" displayType="BALLOON" key="notification.group.instarun"/>
     </extensions>
 
     <actions>
@@ -45,6 +46,11 @@
         <action id="com.zapryan.ui.DebugMethodAction"
                 class="com.zapryan.ui.DebugMethodAction"
                 icon="AllIcons.Actions.StartDebugger">
+            <add-to-group group-id="RunContextGroup" anchor="last"/>
+        </action>
+        <action id="com.zapryan.ui.GenerateTestAction"
+                class="com.zapryan.ui.GenerateTestAction"
+                icon="AllIcons.RunConfigurations.Junit">
             <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
     </actions>

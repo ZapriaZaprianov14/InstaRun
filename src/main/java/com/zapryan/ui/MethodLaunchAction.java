@@ -21,7 +21,6 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 /**
  * Shared behaviour of Run Method and Debug Method: visible on any method name, and on click either
@@ -63,7 +62,7 @@ abstract class MethodLaunchAction extends AnAction {
         MethodDescriptor method = target.getMethod();
         List<RunBlocker> blockers = RunBlocker.findAll(method);
         if (!blockers.isEmpty()) {
-            showError(editor, MessageBundler.message("run.blocked", method.getMethodName(), describeAll(blockers, method)));
+            showError(editor, InputMessages.whyBlocked(method, blockers));
             return;
         }
         Module module = target.getModule();
@@ -72,43 +71,17 @@ abstract class MethodLaunchAction extends AnAction {
             return;
         }
         Executor chosenExecutor = executor.get();
-        MethodInput input = MethodInputDialog.ask(project, method, chosenExecutor);
+        MethodInput input = MethodInputDialog.ask(project, method,
+                MessageBundler.message("dialog.title", chosenExecutor.getActionName(),
+                        StringUtil.getShortName(method.getDeclaringClassFqn()), method.getMethodName()),
+                chosenExecutor.getActionName());
         if (input == null) {
             return;
         }
         MethodLauncher.launch(project, module, target.isInTestSources(), method, input, chosenExecutor);
     }
 
-    private static String describeAll(List<RunBlocker> blockers, MethodDescriptor method) {
-        return blockers.stream().map(blocker -> describe(blocker, method)).collect(Collectors.joining(" "));
-    }
-
-    private static String describe(RunBlocker blocker, MethodDescriptor method) {
-        String className = StringUtil.getShortName(method.getDeclaringClassFqn());
-        return switch (blocker) {
-            case CONSTRUCTOR -> MessageBundler.message("run.blocker.constructor");
-            case LOCAL_OR_ANONYMOUS_CLASS -> MessageBundler.message("run.blocker.localOrAnonymousClass");
-            case ABSTRACT_RECEIVER -> MessageBundler.message("run.blocker.abstractReceiver", className);
-            case ENUM_RECEIVER -> MessageBundler.message("run.blocker.enumReceiver", className);
-            case INNER_CLASS_RECEIVER -> MessageBundler.message("run.blocker.innerClassReceiver", className);
-            case NO_USABLE_CONSTRUCTOR -> MessageBundler.message("run.blocker.noUsableConstructor", className);
-            case UNSUPPORTED_PARAMETER_TYPE ->
-                    MessageBundler.message("run.blocker.unsupportedParameterType", unsupportedParameters(method));
-            case GETTER_OR_SETTER -> MessageBundler.message("run.blocker.getterOrSetter");
-            case SPRING_BEAN_RECEIVER -> MessageBundler.message("run.blocker.springBeanReceiver", className,
-                    method.getReceiver().getSpringEvidence());
-        };
-    }
-
-    private static String unsupportedParameters(MethodDescriptor method) {
-        return method.getParameters().stream()
-                .filter(parameter -> !parameter.isSupported())
-                .map(parameter -> MessageBundler.message("run.blocker.unsupportedParameter", parameter.getName(),
-                        InputMessages.whyUnsupported(parameter.getType())))
-                .collect(Collectors.joining("; "));
-    }
-
-    private static void showError(Editor editor, String message) {
+    static void showError(Editor editor, String message) {
         // The hint renders HTML, so generic types such as List<String> must be escaped to stay visible.
         HintManager.getInstance().showErrorHint(editor, StringUtil.escapeXmlEntities(message));
     }
