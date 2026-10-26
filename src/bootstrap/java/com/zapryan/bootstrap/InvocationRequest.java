@@ -24,13 +24,22 @@ public class InvocationRequest implements Serializable {
     @Nullable
     ValueSpec receiver;
     List<ValueSpec> arguments;
+    /** Where to write the {@link Outcome} of the call when a test is generated from it; null for a plain run. */
+    @Nullable
+    String outcomeFile;
 
     public InvocationRequest(String declaringClassBinaryName, String methodName, List<String> parameterTypeNames,
                              @Nullable ValueSpec receiver, List<ValueSpec> arguments) {
+        this(declaringClassBinaryName, methodName, parameterTypeNames, receiver, arguments, null);
+    }
+
+    public InvocationRequest(String declaringClassBinaryName, String methodName, List<String> parameterTypeNames,
+                             @Nullable ValueSpec receiver, List<ValueSpec> arguments, @Nullable String outcomeFile) {
         this.declaringClassBinaryName = declaringClassBinaryName;
         this.methodName = methodName;
         this.parameterTypeNames = new ArrayList<>(parameterTypeNames);
         this.receiver = receiver;
         this.arguments = new ArrayList<>(arguments);
+        this.outcomeFile = outcomeFile;
     }
 }
