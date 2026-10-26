@@ -23,6 +23,12 @@ public abstract class TypeDescriptor {
     /** The type as written in source with simple class names, e.g. {@code List<Address>}. */
     public abstract String getDisplayName();
 
+    /**
+     * The type as written in source, fully qualified and with its type arguments, e.g.
+     * {@code java.util.List<com.acme.Address>}, which is what generated code declares it as.
+     */
+    public abstract String getCanonicalText();
+
     public boolean isSupported() {
         return getUnsupportedCause() == null;
     }
@@ -78,6 +84,11 @@ public abstract class TypeDescriptor {
         }
 
         @Override
+        public String getCanonicalText() {
+            return typeName;
+        }
+
+        @Override
         public boolean isNullable() {
             return Literals.isNullable(typeName);
         }
@@ -86,12 +97,14 @@ public abstract class TypeDescriptor {
     @Getter
     public static final class EnumType extends TypeDescriptor {
         private final String displayName;
+        private final String canonicalText;
         private final String binaryName;
         /** Constant names in declaration order. */
         private final List<String> constants;
 
-        public EnumType(String displayName, String binaryName, List<String> constants) {
+        public EnumType(String displayName, String canonicalText, String binaryName, List<String> constants) {
             this.displayName = displayName;
+            this.canonicalText = canonicalText;
             this.binaryName = binaryName;
             this.constants = new ArrayList<>(constants);
         }
@@ -101,10 +114,12 @@ public abstract class TypeDescriptor {
     @Getter
     public abstract static class SequenceType extends TypeDescriptor {
         private final String displayName;
+        private final String canonicalText;
         private final TypeDescriptor elementType;
 
-        private SequenceType(String displayName, TypeDescriptor elementType) {
+        private SequenceType(String displayName, String canonicalText, TypeDescriptor elementType) {
             this.displayName = displayName;
+            this.canonicalText = canonicalText;
             this.elementType = elementType;
         }
 
@@ -138,8 +153,9 @@ public abstract class TypeDescriptor {
         /** The class instantiated for the declared type, e.g. {@code java.util.ArrayList} for a {@code List}. */
         private final String implementationClassName;
 
-        public CollectionType(String displayName, TypeDescriptor elementType, String implementationClassName) {
-            super(displayName, elementType);
+        public CollectionType(String displayName, String canonicalText, TypeDescriptor elementType,
+                              String implementationClassName) {
+            super(displayName, canonicalText, elementType);
             this.implementationClassName = implementationClassName;
         }
 
@@ -157,8 +173,9 @@ public abstract class TypeDescriptor {
         /** JVM name of the component type's erasure, e.g. {@code int}, {@code com.acme.Order} or {@code int[]}. */
         private final String componentTypeName;
 
-        public ArrayType(String displayName, TypeDescriptor componentType, String componentTypeName) {
-            super(displayName, componentType);
+        public ArrayType(String displayName, String canonicalText, TypeDescriptor componentType,
+                         String componentTypeName) {
+            super(displayName, canonicalText, componentType);
             this.componentTypeName = componentTypeName;
         }
     }
@@ -171,6 +188,8 @@ public abstract class TypeDescriptor {
         @Getter
         private final String displayName;
         @Getter
+        private final String canonicalText;
+        @Getter
         private final String binaryName;
         @Getter
         private List<ConstructorDescriptor> constructors = Collections.emptyList();
@@ -179,8 +198,9 @@ public abstract class TypeDescriptor {
         private boolean defined;
         private boolean supported = true;
 
-        public BeanType(String displayName, String binaryName) {
+        public BeanType(String displayName, String canonicalText, String binaryName) {
             this.displayName = displayName;
+            this.canonicalText = canonicalText;
             this.binaryName = binaryName;
         }
 
@@ -248,10 +268,16 @@ public abstract class TypeDescriptor {
     @Getter
     public static final class UnsupportedType extends TypeDescriptor {
         private final String displayName;
+        private final String canonicalText;
         private final String reason;
 
         public UnsupportedType(String displayName, String reason) {
+            this(displayName, displayName, reason);
+        }
+
+        public UnsupportedType(String displayName, String canonicalText, String reason) {
             this.displayName = displayName;
+            this.canonicalText = canonicalText;
             this.reason = reason;
         }
 

@@ -78,8 +78,8 @@ final class TypeDescriptorFactory {
         }
         if (type instanceof PsiArrayType) {
             PsiType componentType = ((PsiArrayType) type).getComponentType();
-            return new TypeDescriptor.ArrayType(type.getPresentableText(), describe(componentType),
-                    erasedName(componentType));
+            return new TypeDescriptor.ArrayType(type.getPresentableText(), type.getCanonicalText(),
+                    describe(componentType), erasedName(componentType));
         }
         if (!(type instanceof PsiClassType)) {
             return unsupported(type, "type.unsupported.other");
@@ -102,7 +102,8 @@ final class TypeDescriptorFactory {
             return unsupported(type, "type.unsupported.local");
         }
         if (aClass.isEnum()) {
-            return new TypeDescriptor.EnumType(type.getPresentableText(), binaryName, constantsOf(aClass));
+            return new TypeDescriptor.EnumType(type.getPresentableText(), type.getCanonicalText(), binaryName,
+                    constantsOf(aClass));
         }
         String implementation =
                 qualifiedName != null ? TypeDescriptor.CollectionType.implementationOf(qualifiedName) : null;
@@ -139,7 +140,8 @@ final class TypeDescriptorFactory {
             // Elements of the bound fit both List<? extends Item> and List<? super Item>.
             elementType = wildcard.getBound();
         }
-        return new TypeDescriptor.CollectionType(type.getPresentableText(), describe(elementType), implementation);
+        return new TypeDescriptor.CollectionType(type.getPresentableText(), type.getCanonicalText(),
+                describe(elementType), implementation);
     }
 
     private TypeDescriptor bean(PsiClass aClass, PsiSubstitutor substitutor, PsiClassType type, String binaryName) {
@@ -151,7 +153,7 @@ final class TypeDescriptorFactory {
         if (beans.size() >= MAX_BEANS) {
             return unsupported(type, "type.unsupported.tooMany", MAX_BEANS);
         }
-        bean = new TypeDescriptor.BeanType(type.getPresentableText(), binaryName);
+        bean = new TypeDescriptor.BeanType(type.getPresentableText(), key, binaryName);
         beans.put(key, bean);
         bean.define(constructorsOf(aClass, substitutor), settersOf(aClass, substitutor));
         return bean;
@@ -231,7 +233,7 @@ final class TypeDescriptorFactory {
     }
 
     private static TypeDescriptor unsupported(PsiType type, String reasonKey, Object... arguments) {
-        return new TypeDescriptor.UnsupportedType(type.getPresentableText(),
+        return new TypeDescriptor.UnsupportedType(type.getPresentableText(), type.getCanonicalText(),
                 MessageBundler.message(reasonKey, arguments));
     }
 }
