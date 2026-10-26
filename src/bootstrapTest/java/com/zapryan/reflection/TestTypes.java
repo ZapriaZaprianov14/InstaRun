@@ -25,20 +25,22 @@ public final class TestTypes {
 
     /** A bean in package com.acme, still to be {@link TypeDescriptor.BeanType#define defined}. */
     public static TypeDescriptor.BeanType bean(String simpleName) {
-        return new TypeDescriptor.BeanType(simpleName, "com.acme." + simpleName);
+        return new TypeDescriptor.BeanType(simpleName, "com.acme." + simpleName, "com.acme." + simpleName);
     }
 
     public static TypeDescriptor.EnumType enumOf(String simpleName, String... constants) {
-        return new TypeDescriptor.EnumType(simpleName, "com.acme." + simpleName, Arrays.asList(constants));
+        return new TypeDescriptor.EnumType(simpleName, "com.acme." + simpleName, "com.acme." + simpleName,
+                Arrays.asList(constants));
     }
 
     public static TypeDescriptor.CollectionType listOf(TypeDescriptor elementType) {
-        return new TypeDescriptor.CollectionType("List<" + elementType.getDisplayName() + ">", elementType,
-                "java.util.ArrayList");
+        return new TypeDescriptor.CollectionType("List<" + elementType.getDisplayName() + ">",
+                "java.util.List<" + elementType.getCanonicalText() + ">", elementType, "java.util.ArrayList");
     }
 
     public static TypeDescriptor.ArrayType arrayOf(TypeDescriptor componentType) {
-        return new TypeDescriptor.ArrayType(componentType.getDisplayName() + "[]", componentType, erasure(componentType));
+        return new TypeDescriptor.ArrayType(componentType.getDisplayName() + "[]",
+                componentType.getCanonicalText() + "[]", componentType, erasure(componentType));
     }
 
     public static TypeDescriptor.UnsupportedType unsupported(String displayName) {
