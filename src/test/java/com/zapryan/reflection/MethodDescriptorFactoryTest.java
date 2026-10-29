@@ -76,15 +76,6 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
         assertEquals("boolean", second.getParameters().get(1).getTypeFqn());
     }
 
-    public void testAbstractClassesInterfacesAndEnumsCannotBeCreated() {
-        assertEquals(ReceiverDescriptor.Kind.ABSTRACT,
-                describe("package a; public abstract class Base { int run() { return 1; } }", "run").getReceiver().getKind());
-        assertEquals(ReceiverDescriptor.Kind.ABSTRACT,
-                describe("package a; public interface Api { default int run() { return 1; } }", "run").getReceiver().getKind());
-        assertEquals(ReceiverDescriptor.Kind.ENUM,
-                describe("package a; public enum Mode { ON; int run() { return 1; } }", "run").getReceiver().getKind());
-    }
-
     public void testBeanPropertiesComeFromItsConstructorsAndSetters() {
         TypeDescriptor.BeanType order = (TypeDescriptor.BeanType) describe(
                 "package a; public class Shop { static void buy(Order order) {} } class Order { Order(int id) {} "

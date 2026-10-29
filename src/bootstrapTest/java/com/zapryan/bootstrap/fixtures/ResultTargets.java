@@ -40,6 +40,42 @@ public class ResultTargets {
         return numbers;
     }
 
+    public static List<List<List<Integer>>> cube(int size) {
+        List<List<List<Integer>>> cube = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            List<List<Integer>> plane = new ArrayList<>();
+            for (int j = 0; j < size; j++) {
+                plane.add(numbers(size));
+            }
+            cube.add(plane);
+        }
+        return cube;
+    }
+
+    public static Box<Customer> boxed() {
+        return new Box<>(new Customer());
+    }
+
+    public static List<Shape> shapes() {
+        return Collections.<Shape>singletonList(new Circle());
+    }
+
+    public static List<Circle> circles() {
+        return Collections.singletonList(new Circle());
+    }
+
+    public static Object secret() {
+        return Secret.HIDDEN;
+    }
+
+    public static <T> T anything() {
+        return null;
+    }
+
+    public static void refuse() {
+        throw new Refused();
+    }
+
     public enum Status {
         OPEN,
         CLOSED {
@@ -137,6 +173,32 @@ public class ResultTargets {
         public double getArea() {
             return 3.5;
         }
+
+        public double getRadius() {
+            return 1.0;
+        }
+    }
+
+    public static class Box<T> {
+        private final T value;
+
+        Box(T value) {
+            this.value = value;
+        }
+
+        public T getValue() {
+            return value;
+        }
+    }
+
+    public static class Names extends ArrayList<String> {
+    }
+
+    private static class Refused extends IllegalArgumentException {
+    }
+
+    private enum Secret {
+        HIDDEN
     }
 
     public static class Node {

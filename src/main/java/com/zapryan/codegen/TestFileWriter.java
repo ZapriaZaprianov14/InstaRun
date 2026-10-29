@@ -1,5 +1,6 @@
 package com.zapryan.codegen;
 
+import com.intellij.codeInspection.redundantCast.RemoveRedundantCastUtil;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VfsUtil;
@@ -17,13 +18,17 @@ import com.intellij.psi.PsiImportStaticStatement;
 import com.intellij.psi.PsiJavaFile;
 import com.intellij.psi.PsiManager;
 import com.intellij.psi.PsiMethod;
+import com.intellij.psi.PsiTypeCastExpression;
 import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
+import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.RedundantCastUtil;
 import com.intellij.refactoring.PackageWrapper;
 import com.intellij.util.CommonJavaRefactoringUtil;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.util.List;
 
 /** Puts a generated test method into its test class, creating the class if needed. */
 final class TestFileWriter {
@@ -44,8 +49,8 @@ final class TestFileWriter {
     }
 
     /**
-     * Adds the method, imports what it uses and formats it the way the project formats code. Must run inside a write
-     * command, which makes it a single undoable step.
+     * Adds the method, imports what it uses, drops the casts it doesn't need and formats it the way the project
+     * formats code. Must run inside a write command, which makes it a single undoable step.
      */
     static PsiMethod insert(Project project, TestLocation location, GeneratedTest test) throws IOException {
         PsiClass testClass = location.existingClass() != null ? location.existingClass()
@@ -63,7 +68,24 @@ final class TestFileWriter {
             }
         }
         JavaCodeStyleManager.getInstance(project).shortenClassReferences(method);
+        removeRedundantCasts(method);
         return (PsiMethod) CodeStyleManager.getInstance(project).reformat(method);
+    }
+
+    /**
+     * The test casts every null and every literal of another type than its parameter, in case the method is
+     * overloaded; now that it is in its class, the IDE can tell which of those casts the calls need. One cast is
+     * removed at a time, since removing one can make another one needed.
+     */
+    private static void removeRedundantCasts(PsiMethod method) {
+        int casts = PsiTreeUtil.findChildrenOfType(method, PsiTypeCastExpression.class).size();
+        for (int i = 0; i < casts; i++) {
+            List<PsiTypeCastExpression> redundant = RedundantCastUtil.getRedundantCastsInside(method);
+            if (redundant.isEmpty()) {
+                return;
+            }
+            RemoveRedundantCastUtil.removeCast(redundant.get(0));
+        }
     }
 
     private static PsiClass createTestClass(Project project, TestLocation location) throws IOException {

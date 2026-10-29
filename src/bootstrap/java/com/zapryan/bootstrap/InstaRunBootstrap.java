@@ -82,7 +82,7 @@ public final class InstaRunBootstrap {
         try {
             result = method.invoke(receiver, arguments);
         } catch (InvocationTargetException e) {
-            record(outcomeFile, Outcome.Threw.of(e.getCause()), err);
+            record(outcomeFile, Outcome.Threw.of(method, e.getCause()), err);
             throw e.getCause();
         } catch (IllegalAccessException | IllegalArgumentException e) {
             record(outcomeFile, new Outcome.NotRun(e.toString()), err);
@@ -91,8 +91,7 @@ public final class InstaRunBootstrap {
         boolean isVoid = method.getReturnType() == void.class;
         if (outcomeFile != null) {
             // Recorded before printing: the result's own toString might throw.
-            record(outcomeFile, isVoid ? new Outcome.ReturnedVoid() : new Outcome.Returned(new Observer().observe(result)),
-                    err);
+            record(outcomeFile, isVoid ? new Outcome.ReturnedVoid() : Outcome.Returned.of(method, result), err);
         }
         out.println(RESULT_PREFIX + (isVoid ? "void" : String.valueOf(result)));
         return 0;

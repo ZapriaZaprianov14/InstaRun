@@ -5,8 +5,8 @@ import lombok.Value;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 
 /**
  * How a call went, written to a file for the plugin when a test is being generated from it. Read in the IDE, so
@@ -19,22 +19,24 @@ public abstract class Outcome implements Serializable {
     private Outcome() {
     }
 
-    /** The class of an exception and its superclasses, the exception's own class first and Throwable last. */
-    static List<String> classesOf(Throwable exception) {
-        List<String> classes = new ArrayList<>();
-        for (Class<?> type = exception.getClass(); type != null && type != Object.class; type = type.getSuperclass()) {
-            classes.add(type.getName());
-        }
-        return classes;
-    }
-
     /** The method returned a value. */
     @Value
     @EqualsAndHashCode(callSuper = false)
     public static class Returned extends Outcome {
         private static final long serialVersionUID = 1L;
 
+        /**
+         * What the test declares the result as: the return type, or its erasure when the test can't write the type
+         * itself, e.g. {@code java.util.List<com.acme.Item>}, or else {@code java.lang.Object}.
+         */
+        String type;
         Observation value;
+
+        static Returned of(Method method, @Nullable Object result) {
+            Observer observer = new Observer(Observer.packageOf(method.getDeclaringClass()));
+            Type type = observer.declarable(method.getGenericReturnType());
+            return new Returned(Observer.typeText(type), observer.observe(result, type));
+        }
     }
 
     /** A void method returned. */
@@ -50,18 +52,22 @@ public abstract class Outcome implements Serializable {
     public static class Threw extends Outcome {
         private static final long serialVersionUID = 1L;
 
-        /** The exception's class first, then its superclasses up to Throwable. */
-        List<String> exceptionClasses;
+        /**
+         * The exception's class as the test writes it, e.g. {@code java.lang.IllegalStateException}, or its nearest
+         * superclass the test can see.
+         */
+        String exceptionClass;
         @Nullable
         String message;
 
-        public Threw(List<String> exceptionClasses, @Nullable String message) {
-            this.exceptionClasses = new ArrayList<>(exceptionClasses);
-            this.message = message;
-        }
-
-        static Threw of(Throwable exception) {
-            return new Threw(classesOf(exception), exception.getMessage());
+        static Threw of(Method method, Throwable exception) {
+            String testPackage = Observer.packageOf(method.getDeclaringClass());
+            String name = null;
+            // Throwable itself is public, so this ends there at the latest.
+            for (Class<?> type = exception.getClass(); name == null; type = type.getSuperclass()) {
+                name = Observer.nameInTest(type, testPackage);
+            }
+            return new Threw(name, exception.getMessage());
         }
     }
 
@@ -71,18 +77,12 @@ public abstract class Outcome implements Serializable {
     public static class SetupThrew extends Outcome {
         private static final long serialVersionUID = 1L;
 
-        /** The exception's class first, then its superclasses up to Throwable. */
-        List<String> exceptionClasses;
+        String exceptionClassBinaryName;
         @Nullable
         String message;
 
-        public SetupThrew(List<String> exceptionClasses, @Nullable String message) {
-            this.exceptionClasses = new ArrayList<>(exceptionClasses);
-            this.message = message;
-        }
-
         static SetupThrew of(Throwable exception) {
-            return new SetupThrew(classesOf(exception), exception.getMessage());
+            return new SetupThrew(exception.getClass().getName(), exception.getMessage());
         }
     }
 

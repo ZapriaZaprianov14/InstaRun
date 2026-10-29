@@ -8,18 +8,10 @@ import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.psi.PsiArrayType;
 import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiClassType;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiModifier;
-import com.intellij.psi.PsiPrimitiveType;
-import com.intellij.psi.PsiType;
-import com.intellij.psi.PsiTypeParameter;
-import com.intellij.psi.PsiTypes;
-import com.intellij.psi.PsiWildcardType;
 import com.intellij.psi.SmartPsiElementPointer;
-import com.intellij.psi.util.TypeConversionUtil;
 import com.zapryan.bootstrap.Outcome;
 import com.zapryan.launch.MethodInput;
 import com.zapryan.reflection.MethodDescriptor;
@@ -86,8 +78,8 @@ public final class TestGenerator {
             notify(project, MessageBundler.message("generate.failed.notRun", name, ((Outcome.NotRun) outcome).getReason()));
         } else if (outcome instanceof Outcome.SetupThrew) {
             Outcome.SetupThrew threw = (Outcome.SetupThrew) outcome;
-            notify(project, MessageBundler.message("generate.failed.setupThrew", name, threw.getExceptionClasses().get(0),
-                    String.valueOf(threw.getMessage())));
+            notify(project, MessageBundler.message("generate.failed.setupThrew", name,
+                    threw.getExceptionClassBinaryName(), String.valueOf(threw.getMessage())));
         } else {
             DumbService.getInstance(project).runWhenSmart(() -> write(project, module, pointer, method, input, outcome));
         }
@@ -135,37 +127,23 @@ public final class TestGenerator {
     private static GeneratedTest render(Project project, TestLocation location, PsiMethod psiMethod,
                                         MethodDescriptor method, MethodInput input, Outcome outcome)
             throws CannotGenerate {
-        String testPackage = location.packageName();
-        PsiCodeContext context = new PsiCodeContext(project, testPackage);
-        TestMembers members = TestMembers.scan(project, testPackage, psiMethod, input);
+        TestMembers members = TestMembers.scan(project, location.packageName(), psiMethod, input);
         if (members.getInaccessible() != null) {
             throw new CannotGenerate(MessageBundler.message("generate.error.inaccessible", method.getMethodName(),
                     members.getInaccessible()));
         }
-        PsiType returnType = psiMethod.getReturnType();
-        PsiType resultType = returnType == null || PsiTypes.voidType().equals(returnType) ? null
-                : declarable(returnType, testPackage, psiMethod);
         TestSubject subject = new TestSubject(method,
-                TestFileWriter.freeMethodName(location.existingClass(), testMethodName(method, outcome, context)),
+                TestFileWriter.freeMethodName(location.existingClass(), testMethodName(method, outcome)),
                 method.isStatic() ? null : receiverType(psiMethod),
-                resultType != null ? resultType.getCanonicalText() : null,
-                resultType != null ? new PsiTypeShape(resultType, testPackage) : null,
                 members.declaresExceptions());
-        return TestMethodWriter.write(subject, input, outcome, location.framework(), context);
+        return TestMethodWriter.write(subject, input, outcome, location.framework());
     }
 
     /** {@code placeOrder}, or {@code placeOrderThrowsIllegalStateException} for a call that threw. */
-    private static String testMethodName(MethodDescriptor method, Outcome outcome, CodeContext context) {
-        if (!(outcome instanceof Outcome.Threw)) {
-            return method.getMethodName();
-        }
-        for (String exceptionClass : ((Outcome.Threw) outcome).getExceptionClasses()) {
-            String name = context.referableName(exceptionClass);
-            if (name != null) {
-                return method.getMethodName() + "Throws" + StringUtil.getShortName(name);
-            }
-        }
-        return method.getMethodName() + "Throws";
+    private static String testMethodName(MethodDescriptor method, Outcome outcome) {
+        return outcome instanceof Outcome.Threw
+                ? method.getMethodName() + "Throws" + StringUtil.getShortName(((Outcome.Threw) outcome).getExceptionClass())
+                : method.getMethodName();
     }
 
     /** The receiver's class, with wildcards for its type parameters, e.g. {@code com.acme.Cache<?, ?>}. */
@@ -177,66 +155,5 @@ public final class TestGenerator {
         }
         int typeParameters = aClass.getTypeParameters().length;
         return typeParameters == 0 ? name : name + "<" + String.join(", ", Collections.nCopies(typeParameters, "?")) + ">";
-    }
-
-    /**
-     * What the test can declare the result as: the return type itself, or its erasure when it mentions type
-     * parameters or classes the test can't see, or else Object.
-     */
-    private static PsiType declarable(PsiType type, String testPackage, PsiMethod psiMethod) {
-        if (!mentionsTypeParameters(type) && isAccessible(type, testPackage)) {
-            return type;
-        }
-        PsiType erasure = TypeConversionUtil.erasure(type);
-        return isAccessible(erasure, testPackage) ? erasure
-                : PsiType.getJavaLangObject(psiMethod.getManager(), psiMethod.getResolveScope());
-    }
-
-    private static boolean mentionsTypeParameters(PsiType type) {
-        if (type instanceof PsiArrayType) {
-            return mentionsTypeParameters(((PsiArrayType) type).getComponentType());
-        }
-        if (type instanceof PsiWildcardType) {
-            PsiType bound = ((PsiWildcardType) type).getBound();
-            return bound != null && mentionsTypeParameters(bound);
-        }
-        if (type instanceof PsiClassType) {
-            if (((PsiClassType) type).resolve() instanceof PsiTypeParameter) {
-                return true;
-            }
-            for (PsiType argument : ((PsiClassType) type).getParameters()) {
-                if (mentionsTypeParameters(argument)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /** Whether the test can name the type and every type argument in it. */
-    private static boolean isAccessible(PsiType type, String testPackage) {
-        if (type instanceof PsiPrimitiveType) {
-            return true;
-        }
-        if (type instanceof PsiArrayType) {
-            return isAccessible(((PsiArrayType) type).getComponentType(), testPackage);
-        }
-        if (type instanceof PsiWildcardType) {
-            PsiType bound = ((PsiWildcardType) type).getBound();
-            return bound == null || isAccessible(bound, testPackage);
-        }
-        if (!(type instanceof PsiClassType)) {
-            return false;
-        }
-        PsiClass aClass = ((PsiClassType) type).resolve();
-        if (aClass == null || !Visibility.isAccessible(aClass, testPackage)) {
-            return false;
-        }
-        for (PsiType argument : ((PsiClassType) type).getParameters()) {
-            if (!isAccessible(argument, testPackage)) {
-                return false;
-            }
-        }
-        return true;
     }
 }

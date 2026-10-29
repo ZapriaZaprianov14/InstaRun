@@ -25,9 +25,7 @@ import static org.junit.Assert.assertEquals;
 
 public class InputWriterTest {
 
-    private final FakeContext context = new FakeContext();
-    private final InputWriter writer = new InputWriter(context, new VariableNames());
-
+    private final InputWriter writer = new InputWriter(new VariableNames());
     @Test
     public void writesLiteralsInPlaceAndBeansAsVariablesInTheOrderTheRunBuiltThem() {
         TypeDescriptor.BeanType address = bean("Address");
@@ -81,9 +79,7 @@ public class InputWriterTest {
     }
 
     @Test
-    public void castsNullsAndLiteralsOfAnotherTypeThanTheirParameterForAnOverloadedMethod() {
-        context.overload("com.acme.Shop", "run", 3);
-
+    public void castsNullsAndLiteralsOfAnotherTypeThanTheirParameterInCaseTheMethodIsOverloaded() {
         assertEquals("(java.lang.Integer) (-5), (java.lang.String) null, 7", writer.arguments(
                 staticMethod(parameter("count", INTEGER), parameter("note", STRING), parameter("size", INT)),
                 List.of(literal(-5), new ValueSpec.Null(), literal(7))));
@@ -103,7 +99,6 @@ public class InputWriterTest {
         MethodDescriptor size = new MethodDescriptor("com.acme.Cache", "com.acme.Cache", "size", "int", false, false,
                 List.of(), new ReceiverDescriptor(ReceiverDescriptor.Kind.INSTANTIABLE,
                 List.of(constructor(), constructor(parameter("capacity", INT)))));
-        context.overload("com.acme.Cache", "<init>", 1);
 
         String receiver = writer.receiver(size,
                 new ValueSpec.Constructed("com.acme.Cache", List.of("int"), List.of(literal(10))), "com.acme.Cache<?>");

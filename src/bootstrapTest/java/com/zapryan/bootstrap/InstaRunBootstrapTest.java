@@ -270,7 +270,7 @@ public class InstaRunBootstrapTest {
     public void recordsTheReturnedValueForTestGeneration() throws Throwable {
         assertEquals(0, invokeRecording(TARGETS, "answer", types(), null));
 
-        assertEquals(new Outcome.Returned(new Observation.Literal(42)), recordedOutcome());
+        assertEquals(new Outcome.Returned("int", new Observation.Literal(42, true)), recordedOutcome());
         assertEquals("[InstaRun] Result: 42", stdout());
     }
 
@@ -285,8 +285,7 @@ public class InstaRunBootstrapTest {
     public void recordsTheExceptionTheMethodThrewAndStillRethrowsIt() throws Throwable {
         assertThrows(IllegalStateException.class, () -> invokeRecording(TARGETS, "fail", types(), null));
 
-        assertEquals(new Outcome.Threw(Arrays.asList("java.lang.IllegalStateException", "java.lang.RuntimeException",
-                "java.lang.Exception", "java.lang.Throwable"), "boom"), recordedOutcome());
+        assertEquals(new Outcome.Threw("java.lang.IllegalStateException", "boom"), recordedOutcome());
     }
 
     @Test
@@ -297,7 +296,7 @@ public class InstaRunBootstrapTest {
                 () -> invokeRecording(exploding, "run", types(), receiver(exploding, types())));
 
         Outcome.SetupThrew outcome = (Outcome.SetupThrew) recordedOutcome();
-        assertEquals("java.lang.IllegalStateException", outcome.getExceptionClasses().get(0));
+        assertEquals("java.lang.IllegalStateException", outcome.getExceptionClassBinaryName());
         assertEquals("constructor boom", outcome.getMessage());
     }
 

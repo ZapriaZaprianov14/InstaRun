@@ -16,15 +16,17 @@ import java.util.stream.Collectors;
  * Writes the statements that rebuild a call's receiver and arguments from the recipes the run used, in the order the
  * run built them. Literals, nulls and enum constants are written where they are used; beans, collections and arrays
  * become local variables named after the parameter or property they are for.
+ * <p>
+ * A null, or a literal of another type than its parameter, e.g. 5 for an Integer, is cast to the parameter's type, so
+ * a call to an overloaded method picks the same one the run did. Once the test is in the editor, the casts the call
+ * doesn't need are removed again.
  */
 final class InputWriter {
 
-    private final CodeContext context;
     private final VariableNames names;
     private final List<String> statements = new ArrayList<>();
 
-    InputWriter(CodeContext context, VariableNames names) {
-        this.context = context;
+    InputWriter(VariableNames names) {
         this.names = names;
     }
 
@@ -39,8 +41,7 @@ final class InputWriter {
      */
     String receiver(MethodDescriptor method, ValueSpec.Constructed spec, String typeText) {
         ConstructorDescriptor constructor = matching(method.getReceiver().getConstructors(), spec);
-        String arguments = arguments(spec.getClassBinaryName(), "<init>", constructor.getParameters(),
-                spec.getArguments());
+        String arguments = arguments(constructor.getParameters(), spec.getArguments());
         String className = method.getDeclaringClassFqn();
         String name = names.allocate(VariableNames.forClass(className.substring(className.lastIndexOf('.') + 1)));
         statements.add(typeText + " " + name + " = new " + creation(typeText) + "(" + arguments + ");");
@@ -49,35 +50,34 @@ final class InputWriter {
 
     /** The expressions to call the method with, declaring the variables they need first. */
     String arguments(MethodDescriptor method, List<ValueSpec> values) {
-        return arguments(method.getDeclaringClassBinaryName(), method.getMethodName(), method.getParameters(), values);
+        return arguments(method.getParameters(), values);
     }
 
-    private String arguments(String classBinaryName, String methodName, List<ParameterDescriptor> parameters,
-                             List<ValueSpec> values) {
-        boolean overloaded = context.isOverloaded(classBinaryName, methodName, values.size());
+    private String arguments(List<ParameterDescriptor> parameters, List<ValueSpec> values) {
         List<String> expressions = new ArrayList<>(values.size());
         for (int i = 0; i < values.size(); i++) {
             ParameterDescriptor parameter = parameters.get(i);
-            expressions.add(expression(values.get(i), parameter.getType(), parameter.getName(), overloaded));
+            expressions.add(expression(values.get(i), parameter.getType(), parameter.getName(), true));
         }
         return String.join(", ", expressions);
     }
 
     /**
-     * The value as an expression for a slot of the given type. When the slot belongs to an overloaded method, a null,
-     * or a literal of another type than the slot's, e.g. 5 for an Integer, is cast to the slot's type, so the call
-     * picks the same method the run did; a variable already has exactly the slot's type.
+     * The value as an expression for a slot of the given type.
+     *
+     * @param parameter whether the slot is a parameter, whose nulls and literals of another type are cast; a variable
+     *                  already has exactly the slot's type
      */
-    private String expression(ValueSpec value, TypeDescriptor type, String nameHint, boolean overloaded) {
+    private String expression(ValueSpec value, TypeDescriptor type, String nameHint, boolean parameter) {
         if (value instanceof ValueSpec.Literal) {
             Object literal = ((ValueSpec.Literal) value).getValue();
             String expression = JavaLiterals.of(literal);
-            return overloaded && !JavaLiterals.typeOf(literal).equals(type.getCanonicalText())
+            return parameter && !JavaLiterals.typeOf(literal).equals(type.getCanonicalText())
                     ? JavaLiterals.cast(type.getCanonicalText(), expression)
                     : expression;
         }
         if (value instanceof ValueSpec.Null) {
-            return overloaded ? JavaLiterals.cast(type.getCanonicalText(), "null") : "null";
+            return parameter ? JavaLiterals.cast(type.getCanonicalText(), "null") : "null";
         }
         if (value instanceof ValueSpec.EnumConstant) {
             return type.getCanonicalText() + "." + ((ValueSpec.EnumConstant) value).getConstantName();
@@ -97,15 +97,13 @@ final class InputWriter {
     private String bean(ValueSpec.Constructed spec, TypeDescriptor.BeanType type, String nameHint) {
         ConstructorDescriptor constructor = matching(type.getConstructors(), spec);
         // The arguments come first, since building them may declare variables of their own.
-        String arguments = arguments(spec.getClassBinaryName(), "<init>", constructor.getParameters(),
-                spec.getArguments());
+        String arguments = arguments(constructor.getParameters(), spec.getArguments());
         String name = names.allocate(nameHint);
         String typeText = type.getCanonicalText();
         statements.add(typeText + " " + name + " = new " + creation(typeText) + "(" + arguments + ");");
         for (SetterCall call : spec.getSetterCalls()) {
             SetterDescriptor setter = setterFor(type, call);
-            boolean overloaded = context.isOverloaded(call.getDeclaringClassBinaryName(), call.getMethodName(), 1);
-            String value = expression(call.getValue(), setter.getType(), setter.getPropertyName(), overloaded);
+            String value = expression(call.getValue(), setter.getType(), setter.getPropertyName(), true);
             statements.add(name + "." + call.getMethodName() + "(" + value + ");");
         }
         return name;

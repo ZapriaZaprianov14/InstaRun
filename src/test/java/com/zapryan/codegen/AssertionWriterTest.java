@@ -15,46 +15,32 @@ import static org.junit.Assert.assertTrue;
 
 public class AssertionWriterTest {
 
-    private final FakeContext context = new FakeContext();
-
     @Test
-    public void writesEachLiteralTheWayItsTypeCanBeCompared() {
-        assertEquals(List.of("assertEquals(5, result);"), assertions(FakeShape.primitive("int"), literal(5)));
-        assertEquals(List.of("assertEquals(5L, result);"), assertions(FakeShape.primitive("long"), literal(5L)));
-        assertEquals(List.of("assertEquals(java.lang.Integer.valueOf(5), result);"),
-                assertions(FakeShape.boxed("Integer"), literal(5)));
-        assertEquals(List.of("assertEquals(java.lang.Long.valueOf(5L), result);"),
-                assertions(FakeShape.object("java.lang.Number"), literal(5L)));
-        assertEquals(List.of("assertEquals(\"text\", result);"), assertions(FakeShape.string(), literal("text")));
+    public void writesEachLiteralTheWayItsDeclaredTypeCanBeCompared() {
+        assertEquals(List.of("assertEquals(5, result);"), assertions(primitive(5)));
+        assertEquals(List.of("assertEquals(5L, result);"), assertions(primitive(5L)));
+        assertEquals(List.of("assertEquals(java.lang.Integer.valueOf(5), result);"), assertions(literal(5)));
+        assertEquals(List.of("assertEquals(\"text\", result);"), assertions(literal("text")));
         assertEquals(List.of("assertEquals(new java.math.BigDecimal(\"19.90\"), result);"),
-                assertions(FakeShape.object("java.math.BigDecimal"), literal(new BigDecimal("19.90"))));
-        assertEquals(List.of("assertTrue(result);"), assertions(FakeShape.primitive("boolean"), literal(true)));
-        assertEquals(List.of("assertFalse(result);"), assertions(FakeShape.boxed("Boolean"), literal(false)));
-        assertEquals(List.of("assertNull(result);"), assertions(FakeShape.string(), new Observation.Null()));
+                assertions(literal(new BigDecimal("19.90"))));
+        assertEquals(List.of("assertTrue(result);"), assertions(primitive(true)));
+        assertEquals(List.of("assertEquals(java.lang.Boolean.FALSE, result);"), assertions(literal(false)));
+        assertEquals(List.of("assertNull(result);"), assertions(new Observation.Null()));
     }
 
     @Test
     public void comparesFloatingPointNumbersWithAToleranceOnlyInJUnit4() {
-        assertEquals(List.of("assertEquals(1.5, result);"), assertions(FakeShape.primitive("double"), literal(1.5)));
-        assertEquals(List.of("assertEquals(1.5, result, 0.0);"),
-                assertions(TestFramework.JUNIT4, FakeShape.primitive("double"), literal(1.5)));
-        assertEquals(List.of("assertEquals(1.5f, result, 0.0f);"),
-                assertions(TestFramework.JUNIT4, FakeShape.primitive("float"), literal(1.5f)));
+        assertEquals(List.of("assertEquals(1.5, result);"), assertions(primitive(1.5)));
+        assertEquals(List.of("assertEquals(1.5, result, 0.0);"), assertions(TestFramework.JUNIT4, primitive(1.5)));
+        assertEquals(List.of("assertEquals(1.5f, result, 0.0f);"), assertions(TestFramework.JUNIT4, primitive(1.5f)));
     }
 
     @Test
-    public void readsObjectsThroughTheGettersOfTheirDeclaredType() {
-        FakeShape customer = FakeShape.object("com.acme.Customer").with("getName", FakeShape.string());
-        FakeShape order = FakeShape.object("com.acme.Order")
-                .with("getId", FakeShape.primitive("long"))
-                .with("getCustomer", customer)
-                .with("getNote", FakeShape.string());
-
-        List<String> assertions = assertions(order, bean(
-                "getId", literal(7L),
+    public void readsObjectsThroughTheirRecordedGetters() {
+        List<String> assertions = assertions(bean(
+                "getId", primitive(7L),
                 "getCustomer", bean("getName", literal("Ann")),
-                "getNote", new Observation.Null(),
-                "getInternal", literal("not on the declared type")));
+                "getNote", new Observation.Null()));
 
         assertEquals(List.of(
                 "assertEquals(7L, result.getId());",
@@ -63,47 +49,41 @@ public class AssertionWriterTest {
     }
 
     @Test
-    public void checksOnlyThatAnObjectIsThereWhenItsTypeCantBeRead() {
+    public void checksOnlyThatAValueIsThereWhenTheTestCantReadIt() {
         assertEquals(List.of("assertNotNull(result);"),
-                assertions(FakeShape.object("com.acme.Hidden").inaccessible().with("getName", FakeShape.string()),
-                        bean("getName", literal("Ann"))));
-        assertEquals(List.of("assertNotNull(result);"),
-                assertions(FakeShape.object("java.lang.Object"), bean("getName", literal("Ann"))));
+                assertions(new Observation.Unrecorded(Observation.Unrecorded.Reason.OPAQUE, null)));
     }
 
     @Test
     public void comparesListsOfSimpleValuesWholeAndOthersElementByElement() {
         assertEquals(List.of("assertEquals(java.util.Arrays.asList(\"a\", null), result);"),
-                assertions(FakeShape.list(FakeShape.string()), list(literal("a"), new Observation.Null())));
-
-        FakeShape customer = FakeShape.object("com.acme.Customer").with("getName", FakeShape.string());
+                assertions(list(literal("a"), new Observation.Null())));
         assertEquals(List.of("assertEquals(1, result.size());", "assertEquals(\"Ann\", result.get(0).getName());"),
-                assertions(FakeShape.list(customer), list(bean("getName", literal("Ann")))));
+                assertions(list(bean("getName", literal("Ann")))));
     }
 
     @Test
     public void comparesSetsAsSetsAndOtherCollectionsInOrder() {
         assertEquals(List.of("assertEquals(new java.util.HashSet<>(java.util.Arrays.asList(3, 1)), result);"),
-                assertions(FakeShape.set(FakeShape.boxed("Integer")), sequence(Observation.Sequence.Kind.SET,
-                        literal(3), literal(1))));
+                assertions(sequence(Observation.Sequence.Kind.SET, literal(3), literal(1))));
         assertEquals(List.of("assertEquals(java.util.Arrays.asList(\"a\"), new java.util.ArrayList<>(result));"),
-                assertions(FakeShape.collection(FakeShape.string()), sequence(Observation.Sequence.Kind.OTHER_COLLECTION,
-                        literal("a"))));
+                assertions(sequence(Observation.Sequence.Kind.OTHER_COLLECTION, literal("a"))));
+        assertEquals(List.of("assertEquals(1, result.size());"),
+                assertions(sequence(Observation.Sequence.Kind.OTHER_COLLECTION, bean("getName", literal("Ann")))));
         assertEquals(List.of("assertEquals(java.util.Arrays.asList((java.lang.Object) null), result);"),
-                assertions(FakeShape.list(FakeShape.string()), list(new Observation.Null())));
-        assertEquals(List.of("assertTrue(result.isEmpty());"), assertions(FakeShape.list(FakeShape.string()), list()));
+                assertions(list(new Observation.Null())));
+        assertEquals(List.of("assertTrue(result.isEmpty());"), assertions(list()));
     }
 
     @Test
-    public void comparesArraysOfSimpleValuesWhole() {
+    public void comparesArraysOfLiteralsWholeAndOthersElementByElement() {
         assertEquals(List.of("assertArrayEquals(new int[]{4, 2}, result);"),
-                assertions(FakeShape.array(FakeShape.primitive("int")), sequence(Observation.Sequence.Kind.ARRAY,
-                        literal(4), literal(2))));
+                assertions(array("int", primitive(4), primitive(2))));
         assertEquals(List.of("assertArrayEquals(new double[]{0.5}, result, 0.0);"),
-                assertions(TestFramework.JUNIT4, FakeShape.array(FakeShape.primitive("double")),
-                        sequence(Observation.Sequence.Kind.ARRAY, literal(0.5))));
-        assertEquals(List.of("assertEquals(0, result.length);"),
-                assertions(FakeShape.array(FakeShape.string()), sequence(Observation.Sequence.Kind.ARRAY)));
+                assertions(TestFramework.JUNIT4, array("double", primitive(0.5))));
+        assertEquals(List.of("assertEquals(1, result.length);", "assertEquals(\"Ann\", result[0].getName());"),
+                assertions(array(null, bean("getName", literal("Ann")))));
+        assertEquals(List.of("assertEquals(0, result.length);"), assertions(array("java.lang.String")));
     }
 
     @Test
@@ -112,36 +92,31 @@ public class AssertionWriterTest {
                 new Observation.Entry(literal("pen"), literal(2)),
                 new Observation.Entry(bean("getCode", literal(1)), literal(3))));
 
-        assertEquals(List.of("assertEquals(2, result.size());", "assertEquals(java.lang.Integer.valueOf(2), result.get(\"pen\"));"),
-                assertions(FakeShape.map(FakeShape.object("com.acme.Key"), FakeShape.boxed("Integer")), stock));
+        assertEquals(List.of("assertEquals(2, result.size());",
+                "assertEquals(java.lang.Integer.valueOf(2), result.get(\"pen\"));"), assertions(stock));
     }
 
     @Test
-    public void namesEnumConstantsByTheirEnumWhenTheTestCanReferToIt() {
-        Observation open = new Observation.EnumConstant("com.acme.Order$Status", "OPEN");
-
+    public void namesEnumConstantsByTheirEnumWhenTheTestCanSeeIt() {
         assertEquals(List.of("assertEquals(com.acme.Order.Status.OPEN, result);"),
-                assertions(FakeShape.enumType("com.acme.Order.Status"), open));
-        context.hide("com.acme.Order$Status");
+                assertions(new Observation.EnumConstant("com.acme.Order.Status", "OPEN")));
         assertEquals(List.of("assertEquals(\"OPEN\", ((java.lang.Enum<?>) result).name());"),
-                assertions(FakeShape.object("java.lang.Object"), open));
+                assertions(new Observation.EnumConstant(null, "OPEN")));
     }
 
     @Test
     public void comparesJdkValuesByTheirText() {
         assertEquals(List.of("assertEquals(\"2024-01-02\", result.toString());"),
-                assertions(FakeShape.object("java.time.LocalDate"), new Observation.Text("java.time.LocalDate", "2024-01-02")));
+                assertions(new Observation.Text("java.time.LocalDate", "2024-01-02")));
     }
 
     @Test
     public void notesValuesThatWerentRecorded() {
-        FakeShape order = FakeShape.object("com.acme.Order")
-                .with("getBroken", FakeShape.primitive("int"))
-                .with("getParent", FakeShape.object("com.acme.Order"));
-
-        assertEquals(List.of("// result.getBroken() threw java.lang.IllegalStateException", "assertNotNull(result.getParent());"),
-                assertions(order, bean(
-                        "getBroken", new Observation.Unrecorded(Observation.Unrecorded.Reason.THREW, "java.lang.IllegalStateException"),
+        assertEquals(List.of("// result.getBroken() threw java.lang.IllegalStateException when the values were recorded",
+                        "assertNotNull(result.getParent());"),
+                assertions(bean(
+                        "getBroken", new Observation.Unrecorded(Observation.Unrecorded.Reason.THREW,
+                                "java.lang.IllegalStateException"),
                         "getParent", new Observation.Unrecorded(Observation.Unrecorded.Reason.CYCLE, null))));
     }
 
@@ -149,30 +124,33 @@ public class AssertionWriterTest {
     public void stopsAfterTheMostAssertionsAndSaysSo() {
         List<Observation> numbers = new ArrayList<>();
         for (int i = 0; i < 60; i++) {
-            numbers.add(bean("getValue", literal(i)));
+            numbers.add(bean("getValue", primitive(i)));
         }
-        FakeShape number = FakeShape.object("com.acme.Number").with("getValue", FakeShape.primitive("int"));
 
-        List<String> assertions = assertions(FakeShape.list(number), sequence(Observation.Sequence.Kind.LIST,
-                numbers.toArray(new Observation[0])));
+        List<String> assertions = assertions(list(numbers.toArray(new Observation[0])));
 
         assertEquals(AssertionWriter.MAX_ASSERTIONS + 1, assertions.size());
-        assertEquals("// More values", assertions.get(assertions.size() - 1));
+        assertEquals(AssertionWriter.MORE_VALUES_COMMENT, assertions.get(assertions.size() - 1));
         assertTrue(assertions.contains("assertEquals(48, result.get(48).getValue());"));
     }
 
-    private List<String> assertions(TypeShape type, Observation observed) {
-        return assertions(TestFramework.JUNIT5, type, observed);
+    private static List<String> assertions(Observation observed) {
+        return assertions(TestFramework.JUNIT5, observed);
     }
 
-    private List<String> assertions(TestFramework framework, TypeShape type, Observation observed) {
-        AssertionWriter writer = new AssertionWriter(framework, context);
-        writer.write("result", type, observed);
+    private static List<String> assertions(TestFramework framework, Observation observed) {
+        AssertionWriter writer = new AssertionWriter(framework);
+        writer.write("result", observed);
         return writer.getStatements();
     }
 
+    /** A value declared as a primitive. */
+    private static Observation primitive(Serializable value) {
+        return new Observation.Literal(value, true);
+    }
+
     private static Observation literal(Serializable value) {
-        return new Observation.Literal(value);
+        return new Observation.Literal(value, false);
     }
 
     private static Observation list(Observation... elements) {
@@ -180,14 +158,19 @@ public class AssertionWriterTest {
     }
 
     private static Observation sequence(Observation.Sequence.Kind kind, Observation... elements) {
-        return new Observation.Sequence(kind, elements.length, List.of(elements));
+        return new Observation.Sequence(kind, elements.length, List.of(elements), null);
     }
 
-    /** A bean recorded with alternating accessor names and values. */
-    private static Observation bean(Object... accessorsAndValues) {
+    private static Observation array(String literalElementType, Observation... elements) {
+        return new Observation.Sequence(Observation.Sequence.Kind.ARRAY, elements.length, List.of(elements),
+                literalElementType);
+    }
+
+    /** A bean recorded with alternating getter names and values. */
+    private static Observation bean(Object... gettersAndValues) {
         Map<String, Observation> properties = new LinkedHashMap<>();
-        for (int i = 0; i < accessorsAndValues.length; i += 2) {
-            properties.put((String) accessorsAndValues[i], (Observation) accessorsAndValues[i + 1]);
+        for (int i = 0; i < gettersAndValues.length; i += 2) {
+            properties.put((String) gettersAndValues[i], (Observation) gettersAndValues[i + 1]);
         }
         return new Observation.Bean("com.acme.Recorded", properties);
     }

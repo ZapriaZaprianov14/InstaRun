@@ -9,24 +9,23 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Writes assertions that check a value against what the run recorded for it. Each expression is checked in a way its
- * compile-time type allows: literals with assertEquals, objects through the getters of their declared type, lists and
- * arrays element by element, sets and maps by size and contents. Values the type gives no way to read are only checked
- * not to be null.
+ * Writes assertions that check a value against what the run recorded for it. The run recorded only what the test can
+ * read through the value's declared type, so each recorded value is checked as it is: literals with assertEquals,
+ * objects through their getters, lists and arrays element by element, sets and maps by size and contents, and
+ * values with no way to read them only for not being null.
  */
 final class AssertionWriter {
 
     static final int MAX_ASSERTIONS = 50;
+    static final String MORE_VALUES_COMMENT = "// More values were returned than are checked here";
 
     private final TestFramework framework;
-    private final CodeContext context;
     private final List<String> statements = new ArrayList<>();
     private final Set<String> assertions = new TreeSet<>();
     private int count;
 
-    AssertionWriter(TestFramework framework, CodeContext context) {
+    AssertionWriter(TestFramework framework) {
         this.framework = framework;
-        this.context = context;
     }
 
     List<String> getStatements() {
@@ -38,42 +37,46 @@ final class AssertionWriter {
         return assertions;
     }
 
-    void write(String expression, TypeShape type, Observation observed) {
+    void write(String expression, Observation observed) {
         if (count > MAX_ASSERTIONS) {
             return;
         }
         if (count == MAX_ASSERTIONS) {
-            statements.add("// " + context.comments().moreValuesNotChecked());
+            statements.add(MORE_VALUES_COMMENT);
             count++;
             return;
         }
         if (observed instanceof Observation.Null) {
-            if (type.getKind() != TypeShape.Kind.PRIMITIVE) {
-                assertion("assertNull", expression);
-            }
+            assertion("assertNull", expression);
         } else if (observed instanceof Observation.Literal) {
-            literal(expression, type, ((Observation.Literal) observed).getValue());
+            literal(expression, (Observation.Literal) observed);
         } else if (observed instanceof Observation.EnumConstant) {
             enumConstant(expression, (Observation.EnumConstant) observed);
         } else if (observed instanceof Observation.Text) {
             assertion("assertEquals", JavaLiterals.quote(((Observation.Text) observed).getText()),
                     expression + ".toString()");
         } else if (observed instanceof Observation.Sequence) {
-            sequence(expression, type, (Observation.Sequence) observed);
+            Observation.Sequence sequence = (Observation.Sequence) observed;
+            if (sequence.getKind() == Observation.Sequence.Kind.ARRAY) {
+                array(expression, sequence);
+            } else {
+                collection(expression, sequence);
+            }
         } else if (observed instanceof Observation.MapOf) {
-            map(expression, type, (Observation.MapOf) observed);
+            map(expression, (Observation.MapOf) observed);
         } else if (observed instanceof Observation.Bean) {
-            bean(expression, type, (Observation.Bean) observed);
+            ((Observation.Bean) observed).getProperties()
+                    .forEach((getter, property) -> write(expression + "." + getter + "()", property));
         } else if (observed instanceof Observation.Unrecorded) {
-            unrecorded(expression, type, (Observation.Unrecorded) observed);
+            unrecorded(expression, (Observation.Unrecorded) observed);
         }
     }
 
-    private void literal(String expression, TypeShape type, Object value) {
-        boolean primitive = type.getKind() == TypeShape.Kind.PRIMITIVE;
-        if (value instanceof Boolean && (primitive || type.getKind() == TypeShape.Kind.BOXED)) {
+    private void literal(String expression, Observation.Literal literal) {
+        Object value = literal.getValue();
+        if (value instanceof Boolean && literal.isPrimitive()) {
             assertion((Boolean) value ? "assertTrue" : "assertFalse", expression);
-        } else if (!primitive) {
+        } else if (!literal.isPrimitive()) {
             // A boxed expected value keeps JUnit 4's assertEquals(long, long) and assertEquals(Object, Object) apart.
             assertion("assertEquals", JavaLiterals.boxed(value), expression);
         } else if (framework.needsFloatingPointDelta() && value instanceof Float) {
@@ -86,34 +89,24 @@ final class AssertionWriter {
     }
 
     private void enumConstant(String expression, Observation.EnumConstant constant) {
-        String enumName = context.referableName(constant.getEnumClassBinaryName());
-        if (enumName != null) {
-            assertion("assertEquals", enumName + "." + constant.getConstantName(), expression);
+        if (constant.getEnumName() != null) {
+            assertion("assertEquals", constant.getEnumName() + "." + constant.getConstantName(), expression);
         } else {
             assertion("assertEquals", JavaLiterals.quote(constant.getConstantName()),
                     "((java.lang.Enum<?>) " + expression + ").name()");
         }
     }
 
-    private void sequence(String expression, TypeShape type, Observation.Sequence sequence) {
-        switch (type.getKind()) {
-            case ARRAY -> array(expression, type, sequence);
-            case LIST, SET, COLLECTION -> collection(expression, type, sequence);
-            default -> assertion("assertNotNull", expression);
-        }
-    }
-
-    private void array(String expression, TypeShape type, Observation.Sequence array) {
-        TypeShape component = elementOf(type);
+    private void array(String expression, Observation.Sequence array) {
         if (array.getSize() == 0) {
             assertion("assertEquals", "0", expression + ".length");
             return;
         }
-        List<String> elements = array.isComplete() && isPlainComponent(component) ? simple(array.getElements()) : null;
+        String elementType = array.getLiteralElementType();
+        List<String> elements = array.isComplete() && elementType != null ? simple(array.getElements()) : null;
         if (elements != null) {
-            String expected = "new " + component.getText() + "[]{" + String.join(", ", elements) + "}";
-            String delta = component.getText().equals("double") ? "0.0" : component.getText().equals("float") ? "0.0f"
-                    : null;
+            String expected = "new " + elementType + "[]{" + String.join(", ", elements) + "}";
+            String delta = elementType.equals("double") ? "0.0" : elementType.equals("float") ? "0.0f" : null;
             if (delta != null && framework.needsFloatingPointDelta()) {
                 assertion("assertArrayEquals", expected, expression, delta);
             } else {
@@ -123,86 +116,63 @@ final class AssertionWriter {
         }
         assertion("assertEquals", String.valueOf(array.getSize()), expression + ".length");
         for (int i = 0; i < array.getElements().size(); i++) {
-            write(expression + "[" + i + "]", component, array.getElements().get(i));
+            write(expression + "[" + i + "]", array.getElements().get(i));
         }
     }
 
-    private void collection(String expression, TypeShape type, Observation.Sequence collection) {
+    private void collection(String expression, Observation.Sequence collection) {
         if (collection.getSize() == 0) {
             assertion("assertTrue", expression + ".isEmpty()");
             return;
         }
-        boolean observedList = collection.getKind() == Observation.Sequence.Kind.LIST;
-        boolean observedSet = collection.getKind() == Observation.Sequence.Kind.SET;
+        Observation.Sequence.Kind kind = collection.getKind();
         List<String> elements = collection.isComplete() ? simple(collection.getElements()) : null;
         if (elements != null) {
             String list = "java.util.Arrays.asList(" + listArguments(elements) + ")";
-            if (observedSet) {
-                String actual = type.getKind() == TypeShape.Kind.SET ? expression
-                        : "new java.util.HashSet<>(" + expression + ")";
-                assertion("assertEquals", "new java.util.HashSet<>(" + list + ")", actual);
+            if (kind == Observation.Sequence.Kind.SET) {
+                // Sets are equal to any set with the same elements, whatever its class.
+                assertion("assertEquals", "new java.util.HashSet<>(" + list + ")", expression);
+            } else if (kind == Observation.Sequence.Kind.LIST) {
+                assertion("assertEquals", list, expression);
             } else {
-                String actual = type.getKind() == TypeShape.Kind.LIST && observedList ? expression
-                        : "new java.util.ArrayList<>(" + expression + ")";
-                assertion("assertEquals", list, actual);
+                assertion("assertEquals", list, "new java.util.ArrayList<>(" + expression + ")");
             }
             return;
         }
         assertion("assertEquals", String.valueOf(collection.getSize()), expression + ".size()");
-        if (type.getKind() == TypeShape.Kind.LIST && observedList) {
-            TypeShape element = elementOf(type);
+        if (kind == Observation.Sequence.Kind.LIST) {
             for (int i = 0; i < collection.getElements().size(); i++) {
-                write(expression + ".get(" + i + ")", element, collection.getElements().get(i));
+                write(expression + ".get(" + i + ")", collection.getElements().get(i));
             }
         }
         // Other collections have no index to reach an element by, so only their size is checked.
     }
 
-    private void map(String expression, TypeShape type, Observation.MapOf map) {
-        if (type.getKind() != TypeShape.Kind.MAP) {
-            assertion("assertNotNull", expression);
-            return;
-        }
+    private void map(String expression, Observation.MapOf map) {
         if (map.getSize() == 0) {
             assertion("assertTrue", expression + ".isEmpty()");
             return;
         }
         assertion("assertEquals", String.valueOf(map.getSize()), expression + ".size()");
-        TypeShape valueType = type.getMapValueType() != null ? type.getMapValueType() : ObjectShape.INSTANCE;
         for (Observation.Entry entry : map.getEntries()) {
             String key = simple(entry.getKey());
             if (key != null) {
-                write(expression + ".get(" + key + ")", valueType, entry.getValue());
+                write(expression + ".get(" + key + ")", entry.getValue());
             }
         }
     }
 
-    private void bean(String expression, TypeShape type, Observation.Bean bean) {
-        boolean checked = false;
-        if (type.isAccessible()) {
-            for (TypeShape.Accessor accessor : type.getAccessors()) {
-                Observation property = bean.getProperties().get(accessor.methodName());
-                if (property != null) {
-                    write(expression + "." + accessor.methodName() + "()", accessor.type(), property);
-                    checked = true;
+    private void unrecorded(String expression, Observation.Unrecorded unrecorded) {
+        switch (unrecorded.getReason()) {
+            case THREW -> statements.add("// " + expression + " threw " + unrecorded.getDetail()
+                    + " when the values were recorded");
+            case LIMIT_REACHED -> {
+                if (count < MAX_ASSERTIONS) {
+                    statements.add(MORE_VALUES_COMMENT);
+                    count = MAX_ASSERTIONS + 1;
                 }
             }
-        }
-        if (!checked) {
-            assertion("assertNotNull", expression);
-        }
-    }
-
-    private void unrecorded(String expression, TypeShape type, Observation.Unrecorded unrecorded) {
-        if (unrecorded.getReason() == Observation.Unrecorded.Reason.THREW) {
-            statements.add("// " + context.comments().accessorThrew(expression, String.valueOf(unrecorded.getDetail())));
-        } else if (unrecorded.getReason() == Observation.Unrecorded.Reason.LIMIT_REACHED) {
-            if (count < MAX_ASSERTIONS) {
-                statements.add("// " + context.comments().moreValuesNotChecked());
-                count = MAX_ASSERTIONS + 1;
-            }
-        } else if (type.getKind() != TypeShape.Kind.PRIMITIVE) {
-            assertion("assertNotNull", expression);
+            default -> assertion("assertNotNull", expression);
         }
     }
 
@@ -219,7 +189,7 @@ final class AssertionWriter {
         return expressions;
     }
 
-    private @Nullable String simple(Observation value) {
+    private static @Nullable String simple(Observation value) {
         if (value instanceof Observation.Null) {
             return "null";
         }
@@ -228,8 +198,7 @@ final class AssertionWriter {
         }
         if (value instanceof Observation.EnumConstant) {
             Observation.EnumConstant constant = (Observation.EnumConstant) value;
-            String enumName = context.referableName(constant.getEnumClassBinaryName());
-            return enumName != null ? enumName + "." + constant.getConstantName() : null;
+            return constant.getEnumName() != null ? constant.getEnumName() + "." + constant.getConstantName() : null;
         }
         return null;
     }
@@ -240,57 +209,9 @@ final class AssertionWriter {
                 : String.join(", ", elements);
     }
 
-    /** Whether an array of the type can be written out as {@code new T[]{...}} from simple values. */
-    private static boolean isPlainComponent(TypeShape component) {
-        return switch (component.getKind()) {
-            case PRIMITIVE, BOXED, STRING, BIG_NUMBER, ENUM -> component.isAccessible();
-            default -> false;
-        };
-    }
-
-    private static TypeShape elementOf(TypeShape type) {
-        return type.getElementType() != null ? type.getElementType() : ObjectShape.INSTANCE;
-    }
-
     private void assertion(String method, String... arguments) {
         statements.add(method + "(" + String.join(", ", arguments) + ");");
         assertions.add(method);
         count++;
-    }
-
-    /** What is known of an element or value whose type isn't: it is some object. */
-    static final class ObjectShape implements TypeShape {
-
-        static final ObjectShape INSTANCE = new ObjectShape();
-
-        @Override
-        public Kind getKind() {
-            return Kind.OTHER;
-        }
-
-        @Override
-        public String getText() {
-            return "java.lang.Object";
-        }
-
-        @Override
-        public boolean isAccessible() {
-            return true;
-        }
-
-        @Override
-        public @Nullable TypeShape getElementType() {
-            return null;
-        }
-
-        @Override
-        public @Nullable TypeShape getMapValueType() {
-            return null;
-        }
-
-        @Override
-        public List<Accessor> getAccessors() {
-            return List.of();
-        }
     }
 }
