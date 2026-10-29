@@ -85,6 +85,15 @@ public final class TestGenerator {
         }
     }
 
+    /**
+     * Writes a test that only makes the call with the given inputs, without running the method first, and opens it
+     * at the new method, or tells the user why there is no test. Call on the event dispatch thread.
+     */
+    public static void generateWithoutRunning(Project project, Module module, SmartPsiElementPointer<PsiMethod> pointer,
+                                              MethodDescriptor method, MethodInput input) {
+        DumbService.getInstance(project).runWhenSmart(() -> write(project, module, pointer, method, input, null));
+    }
+
     /** Tells the user in a balloon, for problems found after the editor's hint is gone. */
     public static void notify(Project project, String message) {
         NotificationGroupManager.getInstance().getNotificationGroup(NOTIFICATION_GROUP)
@@ -92,8 +101,9 @@ public final class TestGenerator {
                 .notify(project);
     }
 
+    /** @param outcome null when the method wasn't run */
     private static void write(Project project, Module module, SmartPsiElementPointer<PsiMethod> pointer,
-                              MethodDescriptor method, MethodInput input, Outcome outcome) {
+                              MethodDescriptor method, MethodInput input, @Nullable Outcome outcome) {
         String name = method.getMethodName();
         PsiMethod written;
         try {
@@ -125,7 +135,7 @@ public final class TestGenerator {
     }
 
     private static GeneratedTest render(Project project, TestLocation location, PsiMethod psiMethod,
-                                        MethodDescriptor method, MethodInput input, Outcome outcome)
+                                        MethodDescriptor method, MethodInput input, @Nullable Outcome outcome)
             throws CannotGenerate {
         TestMembers members = TestMembers.scan(project, location.packageName(), psiMethod, input);
         if (members.getInaccessible() != null) {
@@ -140,7 +150,7 @@ public final class TestGenerator {
     }
 
     /** {@code placeOrder}, or {@code placeOrderThrowsIllegalStateException} for a call that threw. */
-    private static String testMethodName(MethodDescriptor method, Outcome outcome) {
+    private static String testMethodName(MethodDescriptor method, @Nullable Outcome outcome) {
         return outcome instanceof Outcome.Threw
                 ? method.getMethodName() + "Throws" + StringUtil.getShortName(((Outcome.Threw) outcome).getExceptionClass())
                 : method.getMethodName();

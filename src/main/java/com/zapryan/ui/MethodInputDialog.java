@@ -1,6 +1,5 @@
 package com.zapryan.ui;
 
-import com.intellij.execution.Executor;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
@@ -10,7 +9,9 @@ import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.TitledSeparator;
+import com.intellij.ui.components.JBCheckBox;
 import com.intellij.util.ui.FormBuilder;
+import com.intellij.util.ui.JBUI;
 import com.zapryan.launch.MethodInput;
 import com.zapryan.reflection.ConstructorDescriptor;
 import com.zapryan.reflection.MethodDescriptor;
@@ -30,11 +31,13 @@ import java.util.stream.Collectors;
 
 /**
  * Collects the values to call a method with: a constructor and its arguments for the receiver of an instance
- * method, then the method's own arguments. Values are remembered per parameter across runs.
+ * method, then the method's own arguments. Values are remembered per parameter across runs. For a generated test it
+ * also offers to write the test without running the method.
  */
 final class MethodInputDialog extends DialogWrapper {
 
     private static final String KEY_PREFIX = "instarun.input.";
+    private static final String WITHOUT_RUNNING_KEY = "instarun.generate.withoutRunning";
 
     private final Project project;
     private final MethodDescriptor method;
@@ -43,6 +46,16 @@ final class MethodInputDialog extends DialogWrapper {
     private final @Nullable ComboBox<ConstructorDescriptor> constructorBox;
     private final Map<ConstructorDescriptor, List<ValueEditor>> constructorFields = new HashMap<>();
     private final JPanel root = new JPanel(new BorderLayout());
+    /** Only for a generated test: ticked to write the test without running the method. */
+    private final @Nullable JBCheckBox withoutRunningBox;
+
+    /**
+     * The inputs for a generated test, and whether to run the method first so the test can check what it did.
+     *
+     * @param runMethod false when the user chose to write the test without running the method
+     */
+    record TestInput(MethodInput input, boolean runMethod) {
+    }
 
     /**
      * Returns the values to call the method with, or null if the user cancelled. Shows the dialog only when there
@@ -51,8 +64,7 @@ final class MethodInputDialog extends DialogWrapper {
      * @param okText the button that confirms, e.g. Run
      */
     static @Nullable MethodInput ask(Project project, MethodDescriptor method, String title, String okText) {
-        List<ConstructorDescriptor> constructors =
-                method.isStatic() ? List.of() : method.getReceiver().getUsableConstructors();
+        List<ConstructorDescriptor> constructors = constructorsFor(method);
         boolean nothingToChoose = constructors.isEmpty()
                 || constructors.size() == 1 && constructors.get(0).getParameters().isEmpty();
         if (method.getParameters().isEmpty() && nothingToChoose) {
@@ -61,18 +73,28 @@ final class MethodInputDialog extends DialogWrapper {
                     : new ValueSpec.Constructed(method.getDeclaringClassBinaryName(), List.of(), List.of());
             return new MethodInput(receiver, List.of());
         }
-        MethodInputDialog dialog = new MethodInputDialog(project, method, constructors, title, okText);
+        MethodInputDialog dialog = new MethodInputDialog(project, method, constructors, title, okText, false);
         return dialog.showAndGet() ? dialog.input() : null;
     }
 
+    /**
+     * Like {@link #ask}, for generating a test. The dialog also offers to write the test without running the method,
+     * so it is shown even when there is nothing to enter; the choice is remembered for the next test.
+     */
+    static @Nullable TestInput askForTest(Project project, MethodDescriptor method, String title, String okText) {
+        MethodInputDialog dialog = new MethodInputDialog(project, method, constructorsFor(method), title, okText, true);
+        return dialog.showAndGet() ? new TestInput(dialog.input(), dialog.runsMethod()) : null;
+    }
+
     private MethodInputDialog(Project project, MethodDescriptor method, List<ConstructorDescriptor> constructors,
-                              String title, String okText) {
+                              String title, String okText, boolean forTest) {
         super(project);
         this.project = project;
         this.method = method;
         this.storage = PropertiesComponent.getInstance(project);
         this.argumentFields = fieldsFor(method.getParameters(), methodKey());
         this.constructorBox = constructors.isEmpty() ? null : createConstructorBox(constructors);
+        this.withoutRunningBox = forTest ? createWithoutRunningBox() : null;
         setTitle(title);
         setOKButtonText(okText);
         init();
@@ -82,7 +104,15 @@ final class MethodInputDialog extends DialogWrapper {
     protected @Nullable JComponent createCenterPanel() {
         layoutFields();
         // Several bean parameters can be taller than the screen; the dialog then scrolls instead of cutting them off.
-        return ScrollPaneFactory.createScrollPane(root, true);
+        JComponent fields = ScrollPaneFactory.createScrollPane(root, true);
+        if (withoutRunningBox == null) {
+            return fields;
+        }
+        // Below the fields rather than among them, so it stays in view however far they scroll.
+        JPanel panel = new JPanel(new BorderLayout(0, JBUI.scale(8)));
+        panel.add(fields, BorderLayout.CENTER);
+        panel.add(withoutRunningBox, BorderLayout.SOUTH);
+        return panel;
     }
 
     @Override
@@ -103,7 +133,14 @@ final class MethodInputDialog extends DialogWrapper {
         if (constructorBox != null) {
             storage.setValue(selectedConstructorKey(), signatureOf(selectedConstructor().getParameters()));
         }
+        if (withoutRunningBox != null) {
+            storage.setValue(WITHOUT_RUNNING_KEY, withoutRunningBox.isSelected());
+        }
         super.doOKAction();
+    }
+
+    private boolean runsMethod() {
+        return withoutRunningBox == null || !withoutRunningBox.isSelected();
     }
 
     private MethodInput input() {
@@ -114,6 +151,15 @@ final class MethodInputDialog extends DialogWrapper {
                     erasedTypesOf(constructor.getParameters()), valuesOf(selectedConstructorFields()));
         }
         return new MethodInput(receiver, valuesOf(argumentFields));
+    }
+
+    private JBCheckBox createWithoutRunningBox() {
+        return new JBCheckBox(MessageBundler.message("dialog.generate.withoutRunning"),
+                storage.getBoolean(WITHOUT_RUNNING_KEY));
+    }
+
+    private static List<ConstructorDescriptor> constructorsFor(MethodDescriptor method) {
+        return method.isStatic() ? List.of() : method.getReceiver().getUsableConstructors();
     }
 
     private ComboBox<ConstructorDescriptor> createConstructorBox(List<ConstructorDescriptor> constructors) {

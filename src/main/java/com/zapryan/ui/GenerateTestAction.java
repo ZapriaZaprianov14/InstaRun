@@ -28,7 +28,8 @@ import java.util.List;
 /**
  * Generate Unit Test: asks for the method's inputs like Run Method, runs it once, and writes a JUnit test that makes the
  * same call and checks it returns or throws what it did. Anything that keeps the call from becoming a test is reported
- * before the run, so nothing runs for nothing.
+ * before the run, so nothing runs for nothing. The user can instead have the test written without running the method,
+ * e.g. for one that changes data or calls other systems; it then only makes the call, and the checks are left to them.
  */
 public final class GenerateTestAction extends AnAction {
 
@@ -78,19 +79,24 @@ public final class GenerateTestAction extends AnAction {
             MethodLaunchAction.showError(editor, target.problem());
             return;
         }
-        MethodInput input = MethodInputDialog.ask(project, method,
+        MethodInputDialog.TestInput choice = MethodInputDialog.askForTest(project, method,
                 MessageBundler.message("dialog.generate.title", StringUtil.getShortName(method.getDeclaringClassFqn()),
                         method.getMethodName()),
                 MessageBundler.message("dialog.generate.ok"));
-        if (input == null) {
+        if (choice == null) {
             return;
         }
+        MethodInput input = choice.input();
         String inputProblem = ReadAction.compute(() -> {
             PsiMethod psiMethod = target.pointer().getElement();
             return psiMethod != null ? TestGenerator.checkInputs(project, psiMethod, input) : null;
         });
         if (inputProblem != null) {
             MethodLaunchAction.showError(editor, inputProblem);
+            return;
+        }
+        if (!choice.runMethod()) {
+            TestGenerator.generateWithoutRunning(project, module, target.pointer(), method, input);
             return;
         }
 

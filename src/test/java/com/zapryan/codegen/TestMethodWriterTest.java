@@ -116,6 +116,41 @@ public class TestMethodWriterTest {
                 """, test.methodText());
     }
 
+    @Test
+    public void onlyMakesTheCallWhenTheMethodWasNotRun() {
+        GeneratedTest test = TestMethodWriter.write(subject(ADD), TWO_AND_THREE, null, TestFramework.JUNIT5);
+
+        assertEquals("""
+                @org.junit.jupiter.api.Test
+                void add() {
+                    com.acme.Calculator calculator = new com.acme.Calculator();
+
+                    calculator.add(2, 3);
+
+                    // TODO: check what add returned or changed
+                }
+                """, test.methodText());
+        assertEquals(Set.of(), test.staticImports());
+    }
+
+    @Test
+    public void asksOnlyForWhatAVoidMethodChangedWhenItWasNotRun() {
+        MethodDescriptor reset = new MethodDescriptor("com.acme.Registry", "com.acme.Registry", "reset", "void", true,
+                false, List.of(), new ReceiverDescriptor(ReceiverDescriptor.Kind.INSTANTIABLE, List.of(constructor())));
+
+        GeneratedTest test = TestMethodWriter.write(new TestSubject(reset, "reset", null, false),
+                new MethodInput(null, List.of()), null, TestFramework.JUNIT4);
+
+        assertEquals("""
+                @org.junit.Test
+                public void reset() {
+                    com.acme.Registry.reset();
+
+                    // TODO: check what reset changed
+                }
+                """, test.methodText());
+    }
+
     private static TestSubject subject(MethodDescriptor method) {
         return new TestSubject(method, method.getMethodName(), method.getDeclaringClassFqn(), false);
     }

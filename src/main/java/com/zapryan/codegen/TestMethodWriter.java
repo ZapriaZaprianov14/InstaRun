@@ -4,6 +4,7 @@ import com.zapryan.bootstrap.Outcome;
 import com.zapryan.launch.MethodInput;
 import com.zapryan.reflection.MethodDescriptor;
 import com.zapryan.reflection.ValueSpec;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,7 +14,7 @@ import java.util.TreeSet;
 /**
  * Writes a test method that repeats a recorded call and checks it does what it did when it was recorded: given the
  * same receiver and arguments, when the method is called, then it returns the same values or throws the same
- * exception.
+ * exception. When the method wasn't run, the test only makes the call and leaves the checks to the user.
  */
 public final class TestMethodWriter {
 
@@ -25,9 +26,9 @@ public final class TestMethodWriter {
 
     /**
      * @param outcome how the recorded call went: {@link Outcome.Returned}, {@link Outcome.ReturnedVoid} or
-     *                {@link Outcome.Threw}
+     *                {@link Outcome.Threw}; null when the method wasn't run
      */
-    public static GeneratedTest write(TestSubject subject, MethodInput input, Outcome outcome,
+    public static GeneratedTest write(TestSubject subject, MethodInput input, @Nullable Outcome outcome,
                                       TestFramework framework) {
         MethodDescriptor method = subject.method();
         VariableNames names = new VariableNames();
@@ -40,7 +41,12 @@ public final class TestMethodWriter {
         List<String> when = new ArrayList<>();
         List<String> then = new ArrayList<>();
         String expectedException = null;
-        if (outcome instanceof Outcome.Returned) {
+        if (outcome == null) {
+            // Without a run there is no telling what the test can declare the result as, so the call stands alone.
+            when.add(call + ";");
+            then.add("// TODO: check what " + method.getMethodName()
+                    + ("void".equals(method.getReturnTypeFqn()) ? " changed" : " returned or changed"));
+        } else if (outcome instanceof Outcome.Returned) {
             Outcome.Returned returned = (Outcome.Returned) outcome;
             String result = names.allocate("result");
             when.add(returned.getType() + " " + result + " = " + call + ";");
