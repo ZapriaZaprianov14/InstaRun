@@ -77,6 +77,14 @@ public class RunBlockerTest {
     }
 
     @Test
+    public void instanceMethodsOfSpringBeansAreBlockedButTheirStaticMethodsAreNot() {
+        ReceiverDescriptor springBean = new ReceiverDescriptor(ReceiverDescriptor.Kind.SPRING_BEAN, List.of(), "@Service");
+
+        assertEquals(List.of(RunBlocker.SPRING_BEAN_RECEIVER), RunBlocker.findAll(instanceMethod(springBean, COUNT)));
+        assertEquals(List.of(), RunBlocker.findAll(method("com.acme.Tool", true, false, springBean, COUNT)));
+    }
+
+    @Test
     public void settersAreBlockedRegardlessOfReturnType() {
         assertEquals(List.of(RunBlocker.GETTER_OR_SETTER),
                 RunBlocker.findAll(namedInstanceMethod("setName", "void", NAME)));
@@ -110,14 +118,6 @@ public class RunBlockerTest {
         assertEquals(List.of(RunBlocker.ENUM_RECEIVER, RunBlocker.GETTER_OR_SETTER),
                 RunBlocker.findAll(method("com.acme.Tool", false, false, "setName",
                         "com.acme.Tool", cannotBeCreated(ReceiverDescriptor.Kind.ENUM), NAME)));
-    }
-
-    @Test
-    public void instanceMethodsOfSpringBeansAreBlockedButTheirStaticMethodsAreNot() {
-        ReceiverDescriptor springBean = new ReceiverDescriptor(ReceiverDescriptor.Kind.SPRING_BEAN, List.of(), "@Service");
-
-        assertEquals(List.of(RunBlocker.SPRING_BEAN_RECEIVER), RunBlocker.findAll(instanceMethod(springBean, COUNT)));
-        assertEquals(List.of(), RunBlocker.findAll(method("com.acme.Tool", true, false, springBean, COUNT)));
     }
 
     private static MethodDescriptor staticMethod(ParameterDescriptor... parameters) {

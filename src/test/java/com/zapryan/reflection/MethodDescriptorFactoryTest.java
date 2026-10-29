@@ -93,6 +93,48 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
                 describe("package a; public enum Mode { ON; int run() { return 1; } }", "run").getReceiver().getKind());
     }
 
+    public void testClassesWithASpringStereotypeAreSpringBeans() {
+        addSpringStubs();
+
+        ReceiverDescriptor component = describe(
+                "package a; import org.springframework.stereotype.Component; @Component public class Tool { int run() { return 1; } }",
+                "run").getReceiver();
+        assertEquals(ReceiverDescriptor.Kind.SPRING_BEAN, component.getKind());
+        assertEquals("@Component", component.getSpringEvidence());
+        assertTrue(component.getConstructors().isEmpty());
+
+        ReceiverDescriptor service = describe(
+                "package a; import org.springframework.stereotype.Service; @Service public class Orders { int run() { return 1; } }",
+                "run").getReceiver();
+        assertEquals(ReceiverDescriptor.Kind.SPRING_BEAN, service.getKind());
+        assertEquals("@Service", service.getSpringEvidence());
+    }
+
+    public void testClassesWithInjectedDependenciesAreSpringBeansEvenWhenInherited() {
+        addSpringStubs();
+
+        ReceiverDescriptor receiver = describe(
+                "package a; import org.springframework.beans.factory.annotation.Autowired; "
+                        + "public class Orders extends Base { int run() { return 1; } } "
+                        + "class Base { @Autowired Repository repository; } class Repository {}",
+                "run").getReceiver();
+
+        assertEquals(ReceiverDescriptor.Kind.SPRING_BEAN, receiver.getKind());
+        assertEquals("@Autowired", receiver.getSpringEvidence());
+    }
+
+    public void testPlainAndAbstractClassesAreNotSpringBeans() {
+        addSpringStubs();
+
+        ReceiverDescriptor plain = describe("package a; public class Tool { int run() { return 1; } }", "run").getReceiver();
+        assertEquals(ReceiverDescriptor.Kind.INSTANTIABLE, plain.getKind());
+        assertNull(plain.getSpringEvidence());
+
+        assertEquals(ReceiverDescriptor.Kind.ABSTRACT, describe(
+                "package a; import org.springframework.stereotype.Service; @Service public abstract class Base { int run() { return 1; } }",
+                "run").getReceiver().getKind());
+    }
+
     public void testBeanPropertiesComeFromItsConstructorsAndSetters() {
         TypeDescriptor.BeanType order = (TypeDescriptor.BeanType) describe(
                 "package a; public class Shop { static void buy(Order order) {} } class Order { Order(int id) {} "
@@ -126,6 +168,30 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
         assertSame(node, node.findSetter("next").getType());
     }
 
+    public void testCollectionsArraysAndEnumsAreDescribed() {
+        addJdkStubs();
+        List<ParameterDescriptor> parameters = describe(
+                "package a; import java.util.List; import java.util.Map; public class Shop { "
+                        + "static void buy(List<Item> items, Size[] sizes, Map<String, Item> byName) {} } "
+                        + "enum Size { S, M, L } class Item {}",
+                "buy").getParameters();
+
+        TypeDescriptor.CollectionType items = (TypeDescriptor.CollectionType) parameters.get(0).getType();
+        assertEquals("java.util.ArrayList", items.getImplementationClassName());
+        assertEquals("a.Item", ((TypeDescriptor.BeanType) items.getElementType()).getBinaryName());
+        assertEquals("java.util.List", parameters.get(0).getErasedTypeName());
+        // Generated tests declare values by their canonical text.
+        assertEquals("java.util.List<a.Item>", items.getCanonicalText());
+        assertEquals("a.Item", items.getElementType().getCanonicalText());
+
+        TypeDescriptor.ArrayType sizes = (TypeDescriptor.ArrayType) parameters.get(1).getType();
+        assertEquals(List.of("S", "M", "L"), ((TypeDescriptor.EnumType) sizes.getElementType()).getConstants());
+        assertEquals("a.Size[]", parameters.get(1).getErasedTypeName());
+        assertEquals("a.Size[]", sizes.getCanonicalText());
+
+        assertFalse(parameters.get(2).isSupported());
+    }
+
     public void testTypesWithoutAClassToBuildAreUnsupported() {
         List<ParameterDescriptor> parameters = describe(
                 "package a; public class Shop { <T> void buy(Api api, Inner inner, T anything) {} class Inner {} } "
@@ -144,6 +210,25 @@ public class MethodDescriptorFactoryTest extends BasePlatformTestCase {
 
         assertEquals("a.Outer$Inner[]", parameter.getErasedTypeName());
         assertEquals("a.Outer.Inner[]", parameter.getTypeFqn());
+    }
+
+    /** The light fixture has no JDK, so the few JDK types these tests need are declared as project sources. */
+    private void addJdkStubs() {
+        myFixture.addFileToProject("java/lang/String.java", "package java.lang; public final class String {}");
+        myFixture.addFileToProject("java/util/Collection.java", "package java.util; public interface Collection<E> {}");
+        myFixture.addFileToProject("java/util/List.java",
+                "package java.util; public interface List<E> extends Collection<E> {}");
+        myFixture.addFileToProject("java/util/Map.java", "package java.util; public interface Map<K, V> {}");
+    }
+
+    /** The Spring annotations the guard looks for, declared as project sources since the fixture has no Spring. */
+    private void addSpringStubs() {
+        myFixture.addFileToProject("org/springframework/stereotype/Component.java",
+                "package org.springframework.stereotype; public @interface Component {}");
+        myFixture.addFileToProject("org/springframework/stereotype/Service.java",
+                "package org.springframework.stereotype; @Component public @interface Service {}");
+        myFixture.addFileToProject("org/springframework/beans/factory/annotation/Autowired.java",
+                "package org.springframework.beans.factory.annotation; public @interface Autowired {}");
     }
 
     private static List<String> namesOf(List<PropertyDescriptor> properties) {
