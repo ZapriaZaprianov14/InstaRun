@@ -31,6 +31,18 @@ val bootstrapTestTask = tasks.register<Test>("bootstrapTest") {
     classpath = bootstrapTest.runtimeClasspath
 }
 
+tasks.test {
+    // The Ultimate sandbox ships plugins InstaRun doesn't use (e.g. Vue); one of them logging an
+    // error during startup would otherwise fail this test task, unrelated to InstaRun's own code.
+    doFirst {
+        val configPath = systemProperties["idea.config.path"] as String?
+        if (configPath != null) {
+            file(configPath).mkdirs()
+            file("$configPath/disabled_plugins.txt").writeText("org.jetbrains.plugins.vue\n")
+        }
+    }
+}
+
 tasks.check {
     dependsOn(bootstrapTestTask)
 }
@@ -42,6 +54,8 @@ dependencies {
     compileOnly(bootstrap.output)
     runtimeOnly(files(bootstrapJar))
     testCompileOnly(bootstrap.output)
+    // The plugin's tests build type descriptors with the same helpers as the bootstrap tests.
+    testImplementation(bootstrapTest.output)
 
     testImplementation(libs.junit)
 
