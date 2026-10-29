@@ -14,10 +14,10 @@ public enum RunBlocker {
     ABSTRACT_RECEIVER,
     ENUM_RECEIVER,
     INNER_CLASS_RECEIVER,
+    SPRING_BEAN_RECEIVER,
     NO_USABLE_CONSTRUCTOR,
     UNSUPPORTED_PARAMETER_TYPE,
-    GETTER_OR_SETTER,
-    SPRING_BEAN_RECEIVER;
+    GETTER_OR_SETTER;
 
     public static List<RunBlocker> findAll(MethodDescriptor method) {
         if (method.isConstructor()) {
@@ -35,40 +35,10 @@ public enum RunBlocker {
         if (!method.getParameters().stream().allMatch(ParameterDescriptor::isSupported)) {
             blockers.add(UNSUPPORTED_PARAMETER_TYPE);
         }
-        if (isGetterOrSetter(method)) {
+        if (method.isGetterOrSetter()) {
             blockers.add(GETTER_OR_SETTER);
         }
         return blockers;
-    }
-
-    /**
-     * A JavaBeans-shaped accessor or mutator: {@code setX(value)}, {@code getX()}, or {@code isX()} returning
-     * boolean. Only checked for instance methods; a static {@code getInstance()}-style factory is not one of these.
-     */
-    private static boolean isGetterOrSetter(MethodDescriptor method) {
-        if (method.isStatic()) {
-            return false;
-        }
-        String name = method.getMethodName();
-        List<ParameterDescriptor> parameters = method.getParameters();
-        if (parameters.size() == 1) {
-            return SetterDescriptor.propertyNameOf(name) != null;
-        }
-        if (!parameters.isEmpty()) {
-            return false;
-        }
-        if (startsWithUppercaseAfter(name, "get")) {
-            return !"void".equals(method.getReturnTypeFqn());
-        }
-        if (startsWithUppercaseAfter(name, "is")) {
-            return "boolean".equals(method.getReturnTypeFqn()) || "java.lang.Boolean".equals(method.getReturnTypeFqn());
-        }
-        return false;
-    }
-
-    private static boolean startsWithUppercaseAfter(String name, String prefix) {
-        return name.length() > prefix.length() && name.startsWith(prefix)
-                && Character.isUpperCase(name.charAt(prefix.length()));
     }
 
     private static RunBlocker receiverBlocker(ReceiverDescriptor receiver) {

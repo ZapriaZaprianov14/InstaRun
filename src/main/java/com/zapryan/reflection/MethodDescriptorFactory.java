@@ -5,6 +5,7 @@ import com.intellij.codeInsight.MetaAnnotationUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.util.ClassUtil;
+import com.intellij.psi.util.PropertyUtil;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public final class MethodDescriptorFactory {
         types.settle();
 
         return new MethodDescriptor(declaringClassFqn, declaringClassBinaryName, method.getName(), returnTypeFqn,
-                isStatic, method.isConstructor(), parameters, receiver);
+                isStatic, method.isConstructor(), parameters, receiver, !isStatic && isGetterOrSetter(method));
     }
 
     private static String returnTypeFqn(PsiMethod method, String declaringClassFqn) {
@@ -56,6 +57,16 @@ public final class MethodDescriptorFactory {
         }
         PsiType returnType = method.getReturnType();
         return returnType != null ? returnType.getCanonicalText() : "void";
+    }
+
+    /**
+     * Whether the method is named like a getter or setter and does nothing more: a getter that only returns a field,
+     * or a setter whose only statement sets a field to its parameter. A method that merely has such a name, e.g.
+     * {@code setOfStrings(Set<String> tags)}, or a getter that computes its value, is not one.
+     */
+    private static boolean isGetterOrSetter(PsiMethod method) {
+        return PropertyUtil.isSimplePropertyGetter(method, true) && PropertyUtil.isSimpleGetter(method)
+                || PropertyUtil.isSimplePropertySetter(method) && PropertyUtil.isSimpleSetter(method);
     }
 
     private static ReceiverDescriptor receiverOf(@Nullable PsiClass declaringClass, TypeDescriptorFactory types) {
