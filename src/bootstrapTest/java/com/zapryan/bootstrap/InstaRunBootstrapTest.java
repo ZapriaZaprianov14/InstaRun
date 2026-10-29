@@ -4,9 +4,7 @@ import com.zapryan.reflection.SetterCall;
 import com.zapryan.reflection.ValueSpec;
 import org.junit.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
-import java.io.Serializable;
+import java.io.*;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,6 +25,7 @@ public class InstaRunBootstrapTest {
 
     private final ByteArrayOutputStream out = new ByteArrayOutputStream();
     private final ByteArrayOutputStream err = new ByteArrayOutputStream();
+    private File outcomeFile;
 
     @Test
     public void printsTheReturnValue() throws Throwable {
@@ -268,6 +267,56 @@ public class InstaRunBootstrapTest {
     }
 
     @Test
+    public void recordsTheReturnedValueForTestGeneration() throws Throwable {
+        assertEquals(0, invokeRecording(TARGETS, "answer", types(), null));
+
+        assertEquals(new Outcome.Returned(new Observation.Literal(42)), recordedOutcome());
+        assertEquals("[InstaRun] Result: 42", stdout());
+    }
+
+    @Test
+    public void recordsThatAVoidMethodReturned() throws Throwable {
+        assertEquals(0, invokeRecording(TARGETS, "noResult", types(), null));
+
+        assertEquals(new Outcome.ReturnedVoid(), recordedOutcome());
+    }
+
+    @Test
+    public void recordsTheExceptionTheMethodThrewAndStillRethrowsIt() throws Throwable {
+        assertThrows(IllegalStateException.class, () -> invokeRecording(TARGETS, "fail", types(), null));
+
+        assertEquals(new Outcome.Threw(Arrays.asList("java.lang.IllegalStateException", "java.lang.RuntimeException",
+                "java.lang.Exception", "java.lang.Throwable"), "boom"), recordedOutcome());
+    }
+
+    @Test
+    public void recordsThatBuildingTheReceiverThrewRatherThanTheMethod() throws Throwable {
+        String exploding = TARGETS + "$Exploding";
+
+        assertThrows(IllegalStateException.class,
+                () -> invokeRecording(exploding, "run", types(), receiver(exploding, types())));
+
+        Outcome.SetupThrew outcome = (Outcome.SetupThrew) recordedOutcome();
+        assertEquals("java.lang.IllegalStateException", outcome.getExceptionClasses().get(0));
+        assertEquals("constructor boom", outcome.getMessage());
+    }
+
+    @Test
+    public void recordsWhyTheCallCouldNotBeSetUp() throws Throwable {
+        assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE,
+                invokeRecording("com.example.Missing", "run", types(), null));
+
+        assertEquals(new Outcome.NotRun("Class com.example.Missing was not found on the classpath."), recordedOutcome());
+    }
+
+    @Test
+    public void writesNoOutcomeForAPlainRun() throws Throwable {
+        assertEquals(0, invokeStatic(TARGETS, "answer"));
+
+        assertEquals(0, outcomeFile().length());
+    }
+
+    @Test
     public void reportsAMalformedRequest() throws Throwable {
         assertEquals(InstaRunBootstrap.EXIT_BOOTSTRAP_FAILURE, run("not base64!"));
         assertTrue(stderr(), stderr().contains("Could not decode the invocation request"));
@@ -288,6 +337,28 @@ public class InstaRunBootstrapTest {
         InvocationRequest request =
                 new InvocationRequest(className, methodName, parameterTypes, receiver, Arrays.asList(arguments));
         return run(InvocationRequestCodec.encode(request));
+    }
+
+    /** Like {@link #invoke}, but as when a test is generated: the outcome goes to {@link #outcomeFile()}. */
+    private int invokeRecording(String className, String methodName, List<String> parameterTypes, ValueSpec receiver,
+                                ValueSpec... arguments) throws Throwable {
+        InvocationRequest request = new InvocationRequest(className, methodName, parameterTypes, receiver,
+                Arrays.asList(arguments), outcomeFile().getPath());
+        return run(InvocationRequestCodec.encode(request));
+    }
+
+    private File outcomeFile() throws IOException {
+        if (outcomeFile == null) {
+            outcomeFile = File.createTempFile("instarun-outcome", ".ser");
+            outcomeFile.deleteOnExit();
+        }
+        return outcomeFile;
+    }
+
+    private Outcome recordedOutcome() throws IOException, ClassNotFoundException {
+        try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(outcomeFile()))) {
+            return (Outcome) in.readObject();
+        }
     }
 
     private int run(String... args) throws Throwable {
