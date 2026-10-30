@@ -1,5 +1,6 @@
 package com.zapryan.bootstrap;
 
+import com.zapryan.reflection.TypeDescriptor;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
@@ -12,14 +13,11 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -41,10 +39,6 @@ final class Observer {
     static final int MAX_DEPTH = 3;
     static final int MAX_ELEMENTS = 20;
     static final int MAX_VALUES = 500;
-
-    private static final Set<Class<?>> LITERAL_CLASSES = new HashSet<>(Arrays.<Class<?>>asList(
-            String.class, Character.class, Boolean.class, Byte.class, Short.class, Integer.class, Long.class,
-            Float.class, Double.class, BigInteger.class, BigDecimal.class));
 
     private final String testPackage;
     /** The objects being recorded around the current one, to recognize an object that contains itself. */
@@ -116,7 +110,7 @@ final class Observer {
             return unrecorded(Observation.Unrecorded.Reason.LIMIT_REACHED, null);
         }
         recorded++;
-        if (LITERAL_CLASSES.contains(value.getClass())) {
+        if (isLiteral(value.getClass())) {
             return new Observation.Literal((Serializable) value, rawOf(declared).isPrimitive());
         }
         if (value instanceof Enum) {
@@ -178,8 +172,8 @@ final class Observer {
                 ? ((GenericArrayType) declared).getGenericComponentType()
                 : rawOf(declared).getComponentType();
         Class<?> elementClass = rawOf(elementType);
-        boolean literalElements = elementClass.isPrimitive() || LITERAL_CLASSES.contains(elementClass)
-                || elementClass.isEnum() && isVisible(elementClass, testPackage);
+        boolean literalElements =
+                isLiteral(elementClass) || elementClass.isEnum() && isVisible(elementClass, testPackage);
         int length = Array.getLength(array);
         List<Observation> elements = new ArrayList<>();
         for (int i = 0; i < Math.min(length, MAX_ELEMENTS); i++) {
@@ -422,6 +416,11 @@ final class Observer {
             }
         }
         return true;
+    }
+
+    /** A primitive, or exactly one of the classes literals are boxed in, e.g. Integer or String. */
+    private static boolean isLiteral(Class<?> type) {
+        return TypeDescriptor.LiteralType.isSupported(type.getName());
     }
 
     private static boolean startsWithUppercaseAfter(String name, String prefix) {

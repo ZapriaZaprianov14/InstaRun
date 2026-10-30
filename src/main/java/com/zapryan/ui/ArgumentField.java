@@ -2,23 +2,20 @@ package com.zapryan.ui;
 
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.ui.ValidationInfo;
-import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.ui.components.JBCheckBox;
-import com.intellij.ui.components.JBTextField;
-import com.intellij.util.ui.JBUI;
-import com.zapryan.reflection.Literals;
+import com.zapryan.json.JsonBinder;
+import com.zapryan.json.JsonBindingException;
+import com.zapryan.json.JsonNode;
 import com.zapryan.reflection.ParameterDescriptor;
 import com.zapryan.reflection.TypeDescriptor;
 import com.zapryan.reflection.ValueSpec;
+import com.zapryan.ui.form.FormEditor;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JComponent;
-import javax.swing.JPanel;
-import java.awt.BorderLayout;
 
 /**
- * One input row of the dialog: a text field for one parameter, plus a "null" checkbox when the type allows null.
- * The last value entered is remembered under the given storage key.
+ * One input row of the dialog for a parameter whose value is typed in, e.g. an int or a String. The input is the
+ * form view's own literal editor; this adds the label and remembers the last value entered under the storage key.
  */
 final class ArgumentField implements ValueEditor {
 
@@ -28,9 +25,7 @@ final class ArgumentField implements ValueEditor {
     private final TypeDescriptor.LiteralType type;
     private final PropertiesComponent storage;
     private final String storageKey;
-    private final JBTextField text = new JBTextField(24);
-    private final @Nullable JBCheckBox nullBox;
-    private final JPanel component = new JPanel(new BorderLayout(JBUI.scale(8), 0));
+    private final FormEditor input;
 
     ArgumentField(ParameterDescriptor parameter, TypeDescriptor.LiteralType type, PropertiesComponent storage,
                   String storageKey) {
@@ -38,17 +33,7 @@ final class ArgumentField implements ValueEditor {
         this.type = type;
         this.storage = storage;
         this.storageKey = storageKey;
-        text.setText(storage.getValue(storageKey, ""));
-        component.add(text, BorderLayout.CENTER);
-        if (type.isNullable()) {
-            JBCheckBox box = new JBCheckBox(MessageBundler.message("dialog.null"), storage.getBoolean(storageKey + NULL_SUFFIX));
-            box.addItemListener(event -> text.setEnabled(!box.isSelected()));
-            text.setEnabled(!box.isSelected());
-            component.add(box, BorderLayout.EAST);
-            nullBox = box;
-        } else {
-            nullBox = null;
-        }
+        this.input = FormEditor.create(type, remembered());
     }
 
     @Override
@@ -58,37 +43,53 @@ final class ArgumentField implements ValueEditor {
 
     @Override
     public JComponent component() {
-        return component;
+        return input.component();
     }
 
     @Override
     public @Nullable ValidationInfo validate() {
-        if (isNull()) {
-            return null;
-        }
-        try {
-            Literals.parse(type.getTypeName(), text.getText());
-            return null;
-        } catch (IllegalArgumentException e) {
-            String typed = StringUtil.escapeXmlEntities(text.getText());
-            return new ValidationInfo(MessageBundler.message("dialog.invalid", typed, type.getDisplayName()), text);
-        }
+        return input.validate();
     }
 
     @Override
     public ValueSpec toValueSpec() {
-        return isNull()
-                ? new ValueSpec.Null()
-                : new ValueSpec.Literal(Literals.parse(type.getTypeName(), text.getText()));
+        try {
+            return JsonBinder.bind(input.toJson(), type);
+        } catch (JsonBindingException e) {
+            throw new IllegalStateException("A validated value didn't bind: " + e.getMessage(), e);
+        }
     }
 
     @Override
     public void save() {
-        storage.setValue(storageKey, text.getText());
-        storage.setValue(storageKey + NULL_SUFFIX, isNull());
+        JsonNode value = input.toJson();
+        boolean isNull = value instanceof JsonNode.NullNode;
+        if (!isNull) {
+            storage.setValue(storageKey, textOf(value));
+        }
+        storage.setValue(storageKey + NULL_SUFFIX, isNull);
     }
 
-    private boolean isNull() {
-        return nullBox != null && nullBox.isSelected();
+    /** The value entered last time, as the JSON the editor starts from. */
+    private JsonNode remembered() {
+        if (type.isNullable() && storage.getBoolean(storageKey + NULL_SUFFIX)) {
+            return new JsonNode.NullNode();
+        }
+        String text = storage.getValue(storageKey, "");
+        return switch (type.getKind()) {
+            case TEXT, CHARACTER -> new JsonNode.StringNode(text);
+            case BOOLEAN -> new JsonNode.BooleanNode(!text.trim().equalsIgnoreCase("false"));
+            default -> new JsonNode.NumberNode(text);
+        };
+    }
+
+    private static String textOf(JsonNode value) {
+        if (value instanceof JsonNode.StringNode) {
+            return ((JsonNode.StringNode) value).getValue();
+        }
+        if (value instanceof JsonNode.BooleanNode) {
+            return String.valueOf(((JsonNode.BooleanNode) value).getValue());
+        }
+        return ((JsonNode.NumberNode) value).getText();
     }
 }

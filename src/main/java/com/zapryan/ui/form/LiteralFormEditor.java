@@ -7,7 +7,6 @@ import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBUI;
 import com.zapryan.json.JsonNode;
-import com.zapryan.reflection.Literals;
 import com.zapryan.reflection.TypeDescriptor;
 import com.zapryan.ui.MessageBundler;
 import org.jetbrains.annotations.Nullable;
@@ -16,7 +15,10 @@ import javax.swing.JComponent;
 import javax.swing.JPanel;
 import java.awt.BorderLayout;
 
-/** A text field, or a true/false dropdown for booleans, plus a "null" checkbox when the type allows null. */
+/**
+ * A text field, or a true/false dropdown for booleans, plus a "null" checkbox when the type allows null. It is the
+ * input for every literal: in the form view, and on its own for a literal parameter.
+ */
 final class LiteralFormEditor extends FormEditor {
 
     private final TypeDescriptor.LiteralType type;
@@ -28,7 +30,7 @@ final class LiteralFormEditor extends FormEditor {
     LiteralFormEditor(TypeDescriptor.LiteralType type, JsonNode initial) {
         this.type = type;
         JComponent input;
-        if (type.getKind() == Literals.Kind.BOOLEAN) {
+        if (type.getKind() == TypeDescriptor.LiteralType.Kind.BOOLEAN) {
             flag = new ComboBox<>(new String[]{"true", "false"});
             boolean isFalse = initial instanceof JsonNode.BooleanNode && !((JsonNode.BooleanNode) initial).getValue();
             flag.setSelectedItem(isFalse ? "false" : "true");
@@ -63,7 +65,7 @@ final class LiteralFormEditor extends FormEditor {
             return null;
         }
         try {
-            Literals.parse(type.getTypeName(), text.getText());
+            type.parse(text.getText());
             return null;
         } catch (IllegalArgumentException e) {
             String typed = StringUtil.escapeXmlEntities(text.getText());
@@ -86,7 +88,7 @@ final class LiteralFormEditor extends FormEditor {
                 return new JsonNode.StringNode(value);
             default:
                 // Written back from the parsed number, so "+5" or " 5" become valid JSON.
-                return new JsonNode.NumberNode(Literals.parse(type.getTypeName(), value).toString());
+                return new JsonNode.NumberNode(type.parse(value).toString());
         }
     }
 

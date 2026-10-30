@@ -10,8 +10,8 @@ import com.intellij.psi.PsiVariable;
 import com.intellij.psi.util.ClassUtil;
 import com.intellij.psi.util.JavaPsiRecordUtil;
 import com.zapryan.launch.MethodInput;
-import com.zapryan.reflection.JvmNames;
 import com.zapryan.reflection.SetterCall;
+import com.zapryan.reflection.TypeDescriptorFactory;
 import com.zapryan.reflection.ValueSpec;
 import com.zapryan.ui.MessageBundler;
 import org.jetbrains.annotations.Nullable;
@@ -137,7 +137,7 @@ final class TestMembers {
     private static List<String> erasedNames(PsiVariable[] parameters) {
         List<String> names = new ArrayList<>(parameters.length);
         for (PsiVariable parameter : parameters) {
-            names.add(JvmNames.erasedName(parameter.getType()));
+            names.add(TypeDescriptorFactory.erasedName(parameter.getType()));
         }
         return names;
     }

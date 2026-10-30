@@ -1,7 +1,6 @@
 package com.zapryan.json;
 
 import com.zapryan.reflection.ConstructorDescriptor;
-import com.zapryan.reflection.Literals;
 import com.zapryan.reflection.ParameterDescriptor;
 import com.zapryan.reflection.PropertyDescriptor;
 import com.zapryan.reflection.SetterCall;
@@ -79,7 +78,7 @@ public final class JsonBinder {
     private static ValueSpec literal(String text, TypeDescriptor.LiteralType type, String path, JsonNode json)
             throws JsonBindingException {
         try {
-            return new ValueSpec.Literal(Literals.parse(type.getTypeName(), text));
+            return new ValueSpec.Literal(type.parse(text));
         } catch (IllegalArgumentException e) {
             throw problem(JsonProblem.INVALID_LITERAL, path, json, text, type.getDisplayName());
         }

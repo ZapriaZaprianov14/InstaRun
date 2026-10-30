@@ -32,13 +32,17 @@ import java.util.Map;
  * itself, gets a single descriptor. Must run inside a read action, and {@link #settle()} must be called once
  * everything is described.
  */
-final class TypeDescriptorFactory {
+public final class TypeDescriptorFactory {
 
     /** Stops runaway generic expansion, e.g. a {@code Node<T>} holding a {@code Node<List<T>>}. */
     private static final int MAX_BEANS = 250;
 
     /** Beans by their type with type arguments, since {@code Page<Order>} and {@code Page<Item>} differ. */
     private final Map<String, TypeDescriptor.BeanType> beans = new HashMap<>();
+
+    /** Only {@link MethodDescriptorFactory} describes methods; the class is public for {@link #erasedName}. */
+    TypeDescriptorFactory() {
+    }
 
     void settle() {
         TypeDescriptor.settle(beans.values());
@@ -73,7 +77,7 @@ final class TypeDescriptorFactory {
     }
 
     TypeDescriptor describe(PsiType type) {
-        if (type instanceof PsiPrimitiveType && Literals.isSupported(type.getCanonicalText())) {
+        if (type instanceof PsiPrimitiveType && TypeDescriptor.LiteralType.isSupported(type.getCanonicalText())) {
             return new TypeDescriptor.LiteralType(type.getCanonicalText(), type.getPresentableText());
         }
         if (type instanceof PsiArrayType) {
@@ -94,7 +98,7 @@ final class TypeDescriptorFactory {
             return unsupported(type, "type.unsupported.typeParameter");
         }
         String qualifiedName = aClass.getQualifiedName();
-        if (qualifiedName != null && Literals.isSupported(qualifiedName)) {
+        if (qualifiedName != null && TypeDescriptor.LiteralType.isSupported(qualifiedName)) {
             return new TypeDescriptor.LiteralType(qualifiedName, type.getPresentableText());
         }
         String binaryName = ClassUtil.getJVMClassName(aClass);
@@ -210,8 +214,11 @@ final class TypeDescriptorFactory {
         return substituted != null ? substituted : TypeConversionUtil.erasure(type);
     }
 
-    /** The JVM name of a type's erasure: {@code int}, {@code a.Outer$Inner}, {@code a.B[]}. */
-    static String erasedName(PsiType type) {
+    /**
+     * The JVM name of a type's erasure, which is how reflection, and the bootstrap, look classes and members up:
+     * {@code int}, {@code a.Outer$Inner}, {@code a.B[]}.
+     */
+    public static String erasedName(PsiType type) {
         PsiType erasure = TypeConversionUtil.erasure(type);
         if (erasure instanceof PsiArrayType) {
             return erasedName(((PsiArrayType) erasure).getComponentType()) + "[]";
