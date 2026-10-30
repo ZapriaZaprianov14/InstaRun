@@ -27,8 +27,6 @@
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow id="MyToolWindowJava" factoryClass="com.zapryan.ui.InputToolWindowFactory"
-                    icon="AllIcons.Toolwindows.ToolWindowPalette"/>
         <configurationType implementation="com.zapryan.launch.InstaRunConfigurationType"/>
         <notificationGroup id="InstaRun" displayType="BALLOON" key="notification.group.instarun"/>
     </extensions>
