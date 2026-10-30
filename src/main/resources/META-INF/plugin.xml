@@ -27,23 +27,23 @@
     <!-- Extensions defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-        <configurationType implementation="com.zapryan.launch.InstaRunConfigurationType"/>
+        <configurationType implementation="com.instarun.launch.InstaRunConfigurationType"/>
         <notificationGroup id="InstaRun" displayType="BALLOON" key="notification.group.instarun"/>
     </extensions>
 
     <actions>
-        <action id="com.zapryan.ui.RunMethodAction"
-                class="com.zapryan.ui.RunMethodAction"
+        <action id="com.instarun.ui.RunMethodAction"
+                class="com.instarun.ui.RunMethodAction"
                 icon="AllIcons.Actions.Execute">
             <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
-        <action id="com.zapryan.ui.DebugMethodAction"
-                class="com.zapryan.ui.DebugMethodAction"
+        <action id="com.instarun.ui.DebugMethodAction"
+                class="com.instarun.ui.DebugMethodAction"
                 icon="AllIcons.Actions.StartDebugger">
             <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
-        <action id="com.zapryan.ui.GenerateTestAction"
-                class="com.zapryan.ui.GenerateTestAction"
+        <action id="com.instarun.ui.GenerateTestAction"
+                class="com.instarun.ui.GenerateTestAction"
                 icon="AllIcons.RunConfigurations.Junit">
             <add-to-group group-id="RunContextGroup" anchor="last"/>
         </action>
