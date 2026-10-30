@@ -79,7 +79,7 @@ abstract class MethodAtCaretAction extends AnAction {
                           SmartPsiElementPointer<PsiMethod> pointer);
 
     /** The method whose name identifier the caret is on, or null anywhere else. Needs read access. */
-    static @Nullable PsiMethod methodAt(AnActionEvent e) {
+    private static @Nullable PsiMethod methodAt(AnActionEvent e) {
         Editor editor = e.getData(CommonDataKeys.EDITOR);
         PsiFile psiFile = e.getData(CommonDataKeys.PSI_FILE);
         if (editor == null || psiFile == null) {

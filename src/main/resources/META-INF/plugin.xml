@@ -34,10 +34,6 @@
     </extensions>
 
     <actions>
-        <action id="com.zapryan.ui.InstaRunAction"
-                class="com.zapryan.ui.InstaRunAction">
-            <add-to-group group-id="RunContextGroup" anchor="last"/>
-        </action>
         <action id="com.zapryan.ui.RunMethodAction"
                 class="com.zapryan.ui.RunMethodAction"
                 icon="AllIcons.Actions.Execute">
