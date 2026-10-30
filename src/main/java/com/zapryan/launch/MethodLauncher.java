@@ -28,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Turns a runnable method into a one-off run configuration and starts it under the given executor.
@@ -38,20 +39,19 @@ public final class MethodLauncher {
     private MethodLauncher() {
     }
 
-    public static void launch(Project project, Module module, boolean inTestSources, MethodDescriptor method,
-                              MethodInput input, Executor executor) {
-        ProgramRunnerUtil.executeConfiguration(settings(project, module, inTestSources, method, input, null), executor);
+    /** @param target a method whose module is known */
+    public static void launch(Project project, LaunchTarget target, MethodInput input, Executor executor) {
+        ProgramRunnerUtil.executeConfiguration(settings(project, target, input, null), executor);
     }
 
     /**
      * Runs the method like {@link #launch} under the Run executor, having the run record how the call went, and passes
      * that on once the run ends. The listener is called on the event dispatch thread.
      */
-    public static void launchRecording(Project project, Module module, boolean inTestSources, MethodDescriptor method,
-                                       MethodInput input, RecordingListener listener) throws IOException {
+    public static void launchRecording(Project project, LaunchTarget target, MethodInput input,
+                                       RecordingListener listener) throws IOException {
         File outcomeFile = FileUtil.createTempFile("instarun-outcome", ".ser", true);
-        RunnerAndConfigurationSettings settings =
-                settings(project, module, inTestSources, method, input, outcomeFile.getPath());
+        RunnerAndConfigurationSettings settings = settings(project, target, input, outcomeFile.getPath());
         RunProfile configuration = settings.getConfiguration();
         MessageBusConnection connection = project.getMessageBus().connect();
         connection.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
@@ -71,16 +71,18 @@ public final class MethodLauncher {
                     connection.disconnect();
                     Outcome outcome = OutcomeReader.read(outcomeFile);
                     FileUtil.delete(outcomeFile);
-                    ApplicationManager.getApplication().invokeLater(() -> listener.ended(outcome), project.getDisposed());
+                    ApplicationManager.getApplication()
+                            .invokeLater(() -> listener.ended(outcome), project.getDisposed());
                 }
             }
         });
         ProgramRunnerUtil.executeConfiguration(settings, DefaultRunExecutor.getRunExecutorInstance());
     }
 
-    private static RunnerAndConfigurationSettings settings(Project project, Module module, boolean inTestSources,
-                                                           MethodDescriptor method, MethodInput input,
+    private static RunnerAndConfigurationSettings settings(Project project, LaunchTarget target, MethodInput input,
                                                            @Nullable String outcomeFile) {
+        MethodDescriptor method = target.getMethod();
+        Module module = Objects.requireNonNull(target.getModule(), "The method's module is checked before a launch");
         List<String> parameterTypes =
                 method.getParameters().stream().map(ParameterDescriptor::getErasedTypeName).toList();
         InvocationRequest request = new InvocationRequest(method.getDeclaringClassBinaryName(), method.getMethodName(),
@@ -91,7 +93,7 @@ public final class MethodLauncher {
         RunnerAndConfigurationSettings settings = RunManager.getInstance(project)
                 .createConfiguration(name, InstaRunConfigurationType.getInstance().getFactory());
         InstaRunConfiguration configuration = (InstaRunConfiguration) settings.getConfiguration();
-        configuration.setTarget(module, inTestSources, request);
+        configuration.setTarget(module, target.isInTestSources(), request);
         configuration.setBeforeRunTasks(List.of(new CompileStepBeforeRun.MakeBeforeRunTask()));
         return settings;
     }

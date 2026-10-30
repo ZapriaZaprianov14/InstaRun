@@ -25,11 +25,8 @@ interface ValueEditor {
     static ValueEditor forParameter(ParameterDescriptor parameter, Project project, PropertiesComponent storage,
                                     String storageKey, Consumer<@Nullable ValidationInfo> errorReporter) {
         TypeDescriptor type = parameter.getType();
-        if (type instanceof TypeDescriptor.LiteralType) {
-            return new ArgumentField(parameter, (TypeDescriptor.LiteralType) type, storage, storageKey);
-        }
-        if (type instanceof TypeDescriptor.EnumType) {
-            return new EnumField(parameter, (TypeDescriptor.EnumType) type, storage, storageKey);
+        if (type instanceof TypeDescriptor.LiteralType || type instanceof TypeDescriptor.EnumType) {
+            return new ArgumentField(parameter, storage, storageKey);
         }
         return new StructuredField(parameter, project, storage, storageKey, errorReporter);
     }

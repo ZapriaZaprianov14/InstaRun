@@ -20,7 +20,7 @@ public class InstaRunAction extends AnAction {
 
     @Override
     public void update(@NotNull AnActionEvent e) {
-        boolean visible = MethodAtCaret.find(e) != null;
+        boolean visible = MethodAtCaretAction.methodAt(e) != null;
         e.getPresentation().setEnabledAndVisible(visible);
     }
 
@@ -36,7 +36,7 @@ public class InstaRunAction extends AnAction {
             return;
         }
         MethodDescriptor descriptor = ReadAction.compute(() -> {
-            PsiMethod method = MethodAtCaret.find(e);
+            PsiMethod method = MethodAtCaretAction.methodAt(e);
             return method != null ? MethodDescriptorFactory.from(method) : null;
         });
         if (descriptor == null) {

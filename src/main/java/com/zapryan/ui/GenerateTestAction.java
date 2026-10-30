@@ -1,16 +1,11 @@
 package com.zapryan.ui;
 
-import com.intellij.openapi.actionSystem.ActionUpdateThread;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiMethod;
-import com.intellij.psi.SmartPointerManager;
 import com.intellij.psi.SmartPsiElementPointer;
 import com.zapryan.bootstrap.Outcome;
 import com.zapryan.codegen.TestGenerator;
@@ -18,65 +13,27 @@ import com.zapryan.launch.LaunchTarget;
 import com.zapryan.launch.MethodInput;
 import com.zapryan.launch.MethodLauncher;
 import com.zapryan.reflection.MethodDescriptor;
-import com.zapryan.reflection.RunBlocker;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.function.Function;
 
 /**
- * Generate Unit Test: asks for the method's inputs like Run Method, runs it once, and writes a JUnit test that makes the
- * same call and checks it returns or throws what it did. Anything that keeps the call from becoming a test is reported
- * before the run, so nothing runs for nothing. The user can instead have the test written without running the method,
- * e.g. for one that changes data or calls other systems; it then only makes the call, and the checks are left to them.
+ * Generate Unit Test: asks for the method's inputs like Run Method, runs it once, and writes a JUnit test that makes
+ * the same call and checks it returns or throws what it did. Anything that keeps the call from becoming a test is
+ * reported before the run, so nothing runs for nothing. The user can instead have the test written without running
+ * the method, e.g. for one that changes data or calls other systems; it then only makes the call, and the checks are
+ * left to them.
  */
-public final class GenerateTestAction extends AnAction {
+public final class GenerateTestAction extends MethodAtCaretAction {
 
     @Override
-    public void update(@NotNull AnActionEvent e) {
-        e.getPresentation().setEnabledAndVisible(MethodAtCaret.find(e) != null);
-    }
-
-    @Override
-    public @NotNull ActionUpdateThread getActionUpdateThread() {
-        return ActionUpdateThread.BGT;
-    }
-
-    @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        Editor editor = e.getData(CommonDataKeys.EDITOR);
-        if (project == null || editor == null) {
-            return;
-        }
-        Target target = ReadAction.compute(() -> {
-            PsiMethod psiMethod = MethodAtCaret.find(e);
-            if (psiMethod == null) {
-                return null;
-            }
-            LaunchTarget launchTarget = LaunchTarget.of(psiMethod);
-            Module module = launchTarget.getModule();
-            String problem = module != null ? TestGenerator.checkMethod(project, module, psiMethod) : null;
-            return new Target(launchTarget, SmartPointerManager.createPointer(psiMethod), problem);
-        });
-        if (target == null) {
-            return;
-        }
-
-        MethodDescriptor method = target.launchTarget().getMethod();
-        List<RunBlocker> blockers = RunBlocker.findAll(method);
-        if (!blockers.isEmpty()) {
-            MethodLaunchAction.showError(editor, InputMessages.whyBlocked(method, blockers));
-            return;
-        }
-        Module module = target.launchTarget().getModule();
-        if (module == null) {
-            MethodLaunchAction.showError(editor, MessageBundler.message("run.error.noModule", method.getMethodName()));
-            return;
-        }
-        if (target.problem() != null) {
-            MethodLaunchAction.showError(editor, target.problem());
+    void perform(Project project, Editor editor, LaunchTarget target, SmartPsiElementPointer<PsiMethod> pointer) {
+        MethodDescriptor method = target.getMethod();
+        Module module = target.getModule();
+        String problem = problemWith(pointer, psiMethod -> TestGenerator.checkMethod(project, module, psiMethod));
+        if (problem != null) {
+            showError(editor, problem);
             return;
         }
         MethodInputDialog.TestInput choice = MethodInputDialog.askForTest(project, method,
@@ -87,41 +44,43 @@ public final class GenerateTestAction extends AnAction {
             return;
         }
         MethodInput input = choice.input();
-        String inputProblem = ReadAction.compute(() -> {
-            PsiMethod psiMethod = target.pointer().getElement();
-            return psiMethod != null ? TestGenerator.checkInputs(project, psiMethod, input) : null;
-        });
+        String inputProblem = problemWith(pointer, psiMethod -> TestGenerator.checkInputs(project, psiMethod, input));
         if (inputProblem != null) {
-            MethodLaunchAction.showError(editor, inputProblem);
+            showError(editor, inputProblem);
             return;
         }
         if (!choice.runMethod()) {
-            TestGenerator.generateWithoutRunning(project, module, target.pointer(), method, input);
+            TestGenerator.generateWithoutRunning(project, module, pointer, method, input);
             return;
         }
 
         try {
-            MethodLauncher.launchRecording(project, module, target.launchTarget().isInTestSources(), method, input,
-                    new MethodLauncher.RecordingListener() {
-                        @Override
-                        public void ended(@Nullable Outcome outcome) {
-                            TestGenerator.generate(project, module, target.pointer(), method, input, outcome);
-                        }
+            MethodLauncher.launchRecording(project, target, input, new MethodLauncher.RecordingListener() {
+                @Override
+                public void ended(@Nullable Outcome outcome) {
+                    TestGenerator.generate(project, module, pointer, method, input, outcome);
+                }
 
-                        @Override
-                        public void notStarted() {
-                            TestGenerator.notify(project,
-                                    MessageBundler.message("generate.failed.notStarted", method.getMethodName()));
-                        }
-                    });
-        } catch (IOException ex) {
-            MethodLaunchAction.showError(editor,
-                    MessageBundler.message("generate.failed.write", method.getMethodName(), ex.getMessage()));
+                @Override
+                public void notStarted() {
+                    TestGenerator.notify(project,
+                            MessageBundler.message("generate.failed.notStarted", method.getMethodName()));
+                }
+            });
+        } catch (IOException e) {
+            showError(editor, MessageBundler.message("generate.failed.write", method.getMethodName(), e.getMessage()));
         }
     }
 
-    /** What the action learns about the method in one read action. */
-    private record Target(LaunchTarget launchTarget, SmartPsiElementPointer<PsiMethod> pointer,
-                          @Nullable String problem) {
+    /**
+     * What the check finds wrong with the method, or null. A method deleted meanwhile passes here; writing the test
+     * reports it.
+     */
+    private static @Nullable String problemWith(SmartPsiElementPointer<PsiMethod> pointer,
+                                                Function<PsiMethod, @Nullable String> check) {
+        return ReadAction.compute(() -> {
+            PsiMethod method = pointer.getElement();
+            return method != null ? check.apply(method) : null;
+        });
     }
 }

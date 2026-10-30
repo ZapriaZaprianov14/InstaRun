@@ -14,23 +14,24 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.JComponent;
 
 /**
- * One input row of the dialog for a parameter whose value is typed in, e.g. an int or a String. The input is the
- * form view's own literal editor; this adds the label and remembers the last value entered under the storage key.
+ * One input row of the dialog for a parameter whose value fits on a line: a literal typed in, e.g. an int or a String,
+ * or an enum constant picked from a list. The input is the form view's own editor for the type; this adds the label
+ * and remembers the last value entered under the storage key.
  */
 final class ArgumentField implements ValueEditor {
 
     private static final String NULL_SUFFIX = ".null";
 
     private final ParameterDescriptor parameter;
-    private final TypeDescriptor.LiteralType type;
+    private final TypeDescriptor type;
     private final PropertiesComponent storage;
     private final String storageKey;
     private final FormEditor input;
 
-    ArgumentField(ParameterDescriptor parameter, TypeDescriptor.LiteralType type, PropertiesComponent storage,
-                  String storageKey) {
+    /** @param parameter a parameter of a {@link TypeDescriptor.LiteralType} or {@link TypeDescriptor.EnumType} */
+    ArgumentField(ParameterDescriptor parameter, PropertiesComponent storage, String storageKey) {
         this.parameter = parameter;
-        this.type = type;
+        this.type = parameter.getType();
         this.storage = storage;
         this.storageKey = storageKey;
         this.input = FormEditor.create(type, remembered());
@@ -76,7 +77,11 @@ final class ArgumentField implements ValueEditor {
             return new JsonNode.NullNode();
         }
         String text = storage.getValue(storageKey, "");
-        return switch (type.getKind()) {
+        if (!(type instanceof TypeDescriptor.LiteralType)) {
+            // An enum constant's name; one the enum no longer has leaves its first constant chosen.
+            return new JsonNode.StringNode(text);
+        }
+        return switch (((TypeDescriptor.LiteralType) type).getKind()) {
             case TEXT, CHARACTER -> new JsonNode.StringNode(text);
             case BOOLEAN -> new JsonNode.BooleanNode(!text.trim().equalsIgnoreCase("false"));
             default -> new JsonNode.NumberNode(text);
