@@ -175,6 +175,43 @@ public class ObserverTest {
     }
 
     @Test
+    public void readsAShownValueThroughItsOwnClassWhoeverCouldSeeIt() {
+        Map<String, Observation> circle =
+                bean(Observer.forDisplay().observe(ResultTargets.shape(), Object.class), RESULTS + "$Circle");
+
+        assertEquals(new Observation.Literal(3.5, true), circle.get("getArea"));
+        assertEquals(new Observation.Literal(1.0, true), circle.get("getRadius"));
+        assertEquals(new Observation.EnumConstant(RESULTS + ".Secret", "HIDDEN"),
+                Observer.forDisplay().observe(ResultTargets.secret(), Object.class));
+    }
+
+    @Test
+    public void showsMoreOfAValueThanATestRecords() {
+        Observation.Sequence numbers =
+                (Observation.Sequence) Observer.forDisplay().observe(ResultTargets.numbers(25), List.class);
+
+        assertTrue(numbers.isComplete());
+        Observation fourthLevel = bean(bean(bean(Observer.forDisplay().observe(ResultTargets.deep(), Object.class),
+                RESULTS + "$Level").get("getInner"), RESULTS + "$Level").get("getInner"), RESULTS + "$Level")
+                .get("getInner");
+        assertTrue(fourthLevel instanceof Observation.Bean);
+    }
+
+    @Test
+    public void showsAnObjectWithoutGettersByItsText() {
+        Object point = new Object() {
+            @Override
+            public String toString() {
+                return "(1, 2)";
+            }
+        };
+
+        assertEquals(new Observation.Text(point.getClass().getName(), "(1, 2)"),
+                Observer.forDisplay().observe(point, Object.class));
+        assertEquals(unrecorded(Observation.Unrecorded.Reason.OPAQUE, null), observe(point, Object.class));
+    }
+
+    @Test
     public void treatsOnlyBooleanIsMethodsAsGetters() throws Exception {
         assertTrue(Observer.isGetter(ResultTargets.Order.class.getMethod("isGift")));
         assertFalse(Observer.isGetter(ResultTargets.Order.class.getMethod("compute")));

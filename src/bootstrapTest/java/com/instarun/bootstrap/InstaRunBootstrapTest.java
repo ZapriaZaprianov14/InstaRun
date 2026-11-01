@@ -6,6 +6,7 @@ import org.junit.Test;
 
 import java.io.*;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -306,6 +307,33 @@ public class InstaRunBootstrapTest {
                 invokeRecording("com.example.Missing", "run", types(), null));
 
         assertEquals(new Outcome.NotRun("Class com.example.Missing was not found on the classpath."), recordedOutcome());
+    }
+
+    @Test
+    public void recordsTheValueToShowThroughItsOwnClass() throws Throwable {
+        String results = "com.instarun.bootstrap.fixtures.ResultTargets";
+        InvocationRequest request = new InvocationRequest(results, "shape", types(), null,
+                Collections.<ValueSpec>emptyList(), outcomeFile().getPath(), true);
+
+        assertEquals(0, run(InvocationRequestCodec.encode(request)));
+
+        // Declared as Shape, which only has getArea, and read as the Circle it is; Circle is private, so the
+        // user is told the result is a Shape.
+        Outcome.Returned outcome = (Outcome.Returned) recordedOutcome();
+        assertEquals(results + ".Shape", outcome.getType());
+        Observation.Bean circle = (Observation.Bean) outcome.getValue();
+        assertEquals(Arrays.asList("getArea", "getRadius"), new ArrayList<>(circle.getProperties().keySet()));
+    }
+
+    @Test
+    public void typesAShownValueAsItsOwnClassWhenItIsPublic() throws Throwable {
+        String results = "com.instarun.bootstrap.fixtures.ResultTargets";
+        InvocationRequest request = new InvocationRequest(results, "boxed", types(), null,
+                Collections.<ValueSpec>emptyList(), outcomeFile().getPath(), true);
+
+        assertEquals(0, run(InvocationRequestCodec.encode(request)));
+
+        assertEquals(results + ".Box", ((Outcome.Returned) recordedOutcome()).getType());
     }
 
     @Test
