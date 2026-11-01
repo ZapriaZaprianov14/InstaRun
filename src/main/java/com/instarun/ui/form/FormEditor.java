@@ -1,8 +1,8 @@
 package com.instarun.ui.form;
 
-import com.intellij.openapi.ui.ValidationInfo;
 import com.instarun.json.JsonNode;
 import com.instarun.reflection.TypeDescriptor;
+import com.intellij.openapi.ui.ValidationInfo;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JComponent;
@@ -35,8 +35,15 @@ public abstract class FormEditor {
 
     public abstract JComponent component();
 
-    /** Checks what was typed and brings a problem hidden in another list element into view; null if all is valid. */
+    /**
+     * The problem with what was entered, or null. Changes nothing on screen: the dialog calls it again every few
+     * hundred milliseconds while the user fixes a problem.
+     */
     public abstract @Nullable ValidationInfo validate();
+
+    /** Brings the problem {@link #validate()} finds into view, e.g. shows the list element it is in. */
+    public void revealProblem() {
+    }
 
     /** Only valid after {@link #validate()} returned null. */
     public abstract JsonNode toJson();

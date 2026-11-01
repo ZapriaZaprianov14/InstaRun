@@ -1,11 +1,11 @@
 package com.instarun.ui;
 
-import com.intellij.ide.util.PropertiesComponent;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.ValidationInfo;
 import com.instarun.reflection.ParameterDescriptor;
 import com.instarun.reflection.TypeDescriptor;
 import com.instarun.reflection.ValueSpec;
+import com.intellij.ide.util.PropertiesComponent;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.ValidationInfo;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JComponent;
@@ -40,7 +40,15 @@ interface ValueEditor {
         return false;
     }
 
+    /**
+     * The problem with what was entered, or null. Changes nothing on screen: the dialog calls it again every few
+     * hundred milliseconds while the user fixes a problem.
+     */
     @Nullable ValidationInfo validate();
+
+    /** Brings the problem {@link #validate()} found into view, e.g. moves the caret to it. */
+    default void revealProblem() {
+    }
 
     /** Only valid after {@link #validate()} returned null. */
     ValueSpec toValueSpec();

@@ -1,5 +1,16 @@
 package com.instarun.ui;
 
+import com.instarun.json.JsonBinder;
+import com.instarun.json.JsonBindingException;
+import com.instarun.json.JsonNode;
+import com.instarun.json.JsonPsiReader;
+import com.instarun.json.JsonSkeleton;
+import com.instarun.json.JsonWriter;
+import com.instarun.reflection.ParameterDescriptor;
+import com.instarun.reflection.PropertyDescriptor;
+import com.instarun.reflection.TypeDescriptor;
+import com.instarun.reflection.ValueSpec;
+import com.instarun.ui.form.FormEditor;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.json.JsonLanguage;
 import com.intellij.openapi.application.ReadAction;
@@ -14,17 +25,6 @@ import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.JBRadioButton;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.util.ui.JBUI;
-import com.instarun.json.JsonBinder;
-import com.instarun.json.JsonBindingException;
-import com.instarun.json.JsonNode;
-import com.instarun.json.JsonPsiReader;
-import com.instarun.json.JsonSkeleton;
-import com.instarun.json.JsonWriter;
-import com.instarun.reflection.ParameterDescriptor;
-import com.instarun.reflection.PropertyDescriptor;
-import com.instarun.reflection.TypeDescriptor;
-import com.instarun.reflection.ValueSpec;
-import com.instarun.ui.form.FormEditor;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.ButtonGroup;
@@ -69,6 +69,8 @@ final class StructuredField implements ValueEditor {
     private @Nullable FormEditor form;
     private View view = View.JSON;
     private @Nullable ValueSpec bound;
+    /** Where in the JSON the last problem found is, or -1. */
+    private int problemOffset = -1;
 
     StructuredField(ParameterDescriptor parameter, Project project, PropertiesComponent storage, String storageKey,
                     Consumer<@Nullable ValidationInfo> errorReporter) {
@@ -144,6 +146,7 @@ final class StructuredField implements ValueEditor {
     @Override
     public @Nullable ValidationInfo validate() {
         bound = null;
+        problemOffset = -1;
         JsonNode json;
         if (view == View.FORM) {
             ValidationInfo problem = form.validate();
@@ -163,6 +166,19 @@ final class StructuredField implements ValueEditor {
             return null;
         } catch (JsonBindingException e) {
             return problemIn(e);
+        }
+    }
+
+    @Override
+    public void revealProblem() {
+        if (view == View.FORM) {
+            form.revealProblem();
+            return;
+        }
+        Editor editor = jsonEditor.getEditor();
+        if (editor != null && problemOffset >= 0 && problemOffset <= editor.getDocument().getTextLength()) {
+            editor.getCaretModel().moveToOffset(problemOffset);
+            editor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
         }
     }
 
@@ -188,13 +204,15 @@ final class StructuredField implements ValueEditor {
             } catch (JsonBindingException e) {
                 jsonButton.setSelected(true);
                 errorReporter.accept(problemIn(e));
+                revealProblem();
                 return;
             }
         } else {
-            ValidationInfo problem = form.validate();
-            if (problem != null) {
+            if (form.validate() != null) {
                 formButton.setSelected(true);
-                errorReporter.accept(problem);
+                form.revealProblem();
+                // Checked again, now that the problem is on show.
+                errorReporter.accept(form.validate());
                 return;
             }
             jsonEditor.setText(JsonWriter.write(form.toJson()));
@@ -228,17 +246,13 @@ final class StructuredField implements ValueEditor {
         return JsonWriter.write(JsonSkeleton.of(type));
     }
 
-    /** A validation problem pointing at the JSON editor, with the caret moved to where the problem is. */
+    /** A validation problem pointing at the view on show, remembering where in the JSON it is. */
     private ValidationInfo problemIn(JsonBindingException problem) {
         String message = StringUtil.escapeXmlEntities(InputMessages.describe(problem, parameter.getName()));
         if (view == View.FORM) {
             return new ValidationInfo(message, formScroll);
         }
-        Editor editor = jsonEditor.getEditor();
-        if (editor != null && problem.getOffset() >= 0 && problem.getOffset() <= editor.getDocument().getTextLength()) {
-            editor.getCaretModel().moveToOffset(problem.getOffset());
-            editor.getScrollingModel().scrollToCaret(ScrollType.MAKE_VISIBLE);
-        }
+        problemOffset = problem.getOffset();
         return new ValidationInfo(message, jsonEditor);
     }
 

@@ -1,5 +1,11 @@
 package com.instarun.ui.form;
 
+import com.instarun.json.JsonNode;
+import com.instarun.json.JsonSkeleton;
+import com.instarun.reflection.PropertyDescriptor;
+import com.instarun.reflection.TypeDescriptor;
+import com.instarun.ui.InputMessages;
+import com.instarun.ui.MessageBundler;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.ui.panel.ComponentPanelBuilder;
 import com.intellij.openapi.util.text.StringUtil;
@@ -7,12 +13,6 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
-import com.instarun.json.JsonNode;
-import com.instarun.json.JsonSkeleton;
-import com.instarun.reflection.PropertyDescriptor;
-import com.instarun.reflection.TypeDescriptor;
-import com.instarun.ui.InputMessages;
-import com.instarun.ui.MessageBundler;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.BorderFactory;
@@ -74,6 +74,14 @@ final class BeanFormEditor extends FormEditor {
             }
         }
         return null;
+    }
+
+    @Override
+    public void revealProblem() {
+        if (!nullBox.isSelected()) {
+            editors.values().stream().filter(editor -> editor.validate() != null).findFirst()
+                    .ifPresent(FormEditor::revealProblem);
+        }
     }
 
     @Override

@@ -22,7 +22,11 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JComponent;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.KeyboardFocusManager;
+import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -48,6 +52,8 @@ final class MethodInputDialog extends DialogWrapper {
     private final JPanel root = new JPanel(new BorderLayout());
     /** Only for a generated test: ticked to write the test without running the method. */
     private final @Nullable JBCheckBox withoutRunningBox;
+    private boolean confirming;
+    private List<ValidationInfo> reported = List.of();
 
     /**
      * The inputs for a generated test, and whether to run the method first so the test can check what it did.
@@ -115,15 +121,37 @@ final class MethodInputDialog extends DialogWrapper {
         return panel;
     }
 
+    /** Marks the checks the OK button makes. Called from DialogWrapper's constructor, before this class's fields. */
+    @Override
+    protected void createDefaultActions() {
+        super.createDefaultActions();
+        myOKAction = new OkAction() {
+            @Override
+            protected void doAction(ActionEvent e) {
+                confirming = true;
+                try {
+                    super.doAction(e);
+                } finally {
+                    confirming = false;
+                }
+            }
+        };
+    }
+
     @Override
     protected @NotNull List<ValidationInfo> doValidateAll() {
+        if (confirming) {
+            visibleFields().stream().filter(field -> field.validate() != null).findFirst()
+                    .ifPresent(ValueEditor::revealProblem);
+        }
         List<ValidationInfo> problems = new ArrayList<>();
         for (ValueEditor field : visibleFields()) {
             ValidationInfo problem = field.validate();
-            if (problem != null) {
+            if (problem != null && (confirming || reported.contains(problem) || !isTypedIn(problem.component))) {
                 problems.add(problem);
             }
         }
+        reported = problems;
         return problems;
     }
 
@@ -269,5 +297,10 @@ final class MethodInputDialog extends DialogWrapper {
 
     private static List<ValueSpec> valuesOf(List<ValueEditor> fields) {
         return fields.stream().map(ValueEditor::toValueSpec).toList();
+    }
+
+    private static boolean isTypedIn(@Nullable JComponent component) {
+        Component focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        return component != null && focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, component);
     }
 }

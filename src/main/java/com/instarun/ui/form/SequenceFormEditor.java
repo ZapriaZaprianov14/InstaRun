@@ -1,15 +1,15 @@
 package com.instarun.ui.form;
 
+import com.instarun.json.JsonNode;
+import com.instarun.json.JsonSkeleton;
+import com.instarun.reflection.TypeDescriptor;
+import com.instarun.ui.MessageBundler;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.WrapLayout;
-import com.instarun.json.JsonNode;
-import com.instarun.json.JsonSkeleton;
-import com.instarun.reflection.TypeDescriptor;
-import com.instarun.ui.MessageBundler;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.JButton;
@@ -30,7 +30,9 @@ final class SequenceFormEditor extends FormEditor {
     private final TypeDescriptor.SequenceType type;
     private final List<FormEditor> elements = new ArrayList<>();
     private final JBCheckBox nullBox;
-    private final JPanel numbers = new JPanel(new WrapLayout(FlowLayout.LEFT, JBUI.scale(2), JBUI.scale(2)));
+    /** A button per element, in step with {@link #elements}. */
+    private final List<JToggleButton> numbers = new ArrayList<>();
+    private final JPanel numberRow = new JPanel(new WrapLayout(FlowLayout.LEFT, JBUI.scale(2), JBUI.scale(2)));
     private final JButton add = new JButton(AllIcons.General.Add);
     private final JButton remove = new JButton(AllIcons.General.Remove);
     private final JBLabel position = new JBLabel();
@@ -66,7 +68,7 @@ final class SequenceFormEditor extends FormEditor {
         actions.add(remove);
         actions.add(nullBox);
         JPanel header = new JPanel(new BorderLayout());
-        header.add(numbers, BorderLayout.CENTER);
+        header.add(numberRow, BorderLayout.CENTER);
         header.add(actions, BorderLayout.EAST);
 
         body.setBorder(JBUI.Borders.emptyLeft(8));
@@ -95,11 +97,28 @@ final class SequenceFormEditor extends FormEditor {
         for (int i = 0; i < elements.size(); i++) {
             ValidationInfo problem = elements.get(i).validate();
             if (problem != null) {
-                select(i);
-                return problem;
+                // A problem in an element not on show is pointed out on the element's number.
+                return i == selected ? problem : new ValidationInfo(
+                        MessageBundler.message("dialog.list.problemIn", i + 1, problem.message), numbers.get(i));
             }
         }
         return null;
+    }
+
+    @Override
+    public void revealProblem() {
+        if (nullBox.isSelected()) {
+            return;
+        }
+        for (int i = 0; i < elements.size(); i++) {
+            if (elements.get(i).validate() != null) {
+                if (i != selected) {
+                    select(i);
+                }
+                elements.get(i).revealProblem();
+                return;
+            }
+        }
     }
 
     @Override
@@ -121,12 +140,20 @@ final class SequenceFormEditor extends FormEditor {
 
     private void refresh() {
         boolean isNull = nullBox.isSelected();
-        numbers.removeAll();
-        for (int i = 0; i < elements.size(); i++) {
-            int index = i;
-            JToggleButton number = new JToggleButton(String.valueOf(i + 1), i == selected);
-            number.addActionListener(event -> select(index));
-            numbers.add(number);
+        if (numbers.size() != elements.size()) {
+            // Only rebuilt when an element was added or removed, so a number just clicked keeps the focus.
+            numbers.clear();
+            numberRow.removeAll();
+            for (int i = 0; i < elements.size(); i++) {
+                int index = i;
+                JToggleButton number = new JToggleButton(String.valueOf(i + 1));
+                number.addActionListener(event -> select(index));
+                numbers.add(number);
+                numberRow.add(number);
+            }
+        }
+        for (int i = 0; i < numbers.size(); i++) {
+            numbers.get(i).setSelected(i == selected);
         }
         shown.removeAll();
         if (selected >= 0) {
@@ -135,7 +162,7 @@ final class SequenceFormEditor extends FormEditor {
         } else {
             position.setText(MessageBundler.message("dialog.list.empty"));
         }
-        numbers.setVisible(!isNull);
+        numberRow.setVisible(!isNull);
         body.setVisible(!isNull);
         add.setEnabled(!isNull);
         remove.setEnabled(!isNull && selected >= 0);
