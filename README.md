@@ -1,155 +1,118 @@
 # InstaRun
 
-[![Twitter Follow](https://img.shields.io/badge/follow-%40JBPlatform-1DA1F2?logo=twitter)](https://twitter.com/JBPlatform)
-[![Developers Forum](https://img.shields.io/badge/JetBrains%20Platform-Join-blue)][jb:forum]
+InstaRun is an IntelliJ IDEA plugin that runs, debugs and unit-tests **a single Java method** straight from the
+editor — no `main` method, no test class, no run configuration to write by hand.
 
-## Overview
+Put the caret on a method name, right-click, and choose one of:
 
-This repository implements an IntelliJ Platform plugin.
+| Action | What it does |
+|---|---|
+| **Run Method** | Asks for the arguments (and, for an instance method, how to build the object it is called on), then runs the method in a fresh JVM and prints the result in the Run window. |
+| **Debug Method** | The same, under the debugger, so breakpoints inside the method are hit. |
+| **Generate Unit Test** | Runs the method once with the values you entered, records what it returned or threw, and writes a JUnit test that checks it does the same again. |
 
-## Demo Functionality
+## Features
 
-The sample plugin adds a `My Tool Window` tool window with a simple functionality of shuffling a random number.
+- **Any method with a body**: static or instance, public, protected, package-private or private, in any class
+  of the project that can be loaded by name.
+- **Input dialog per method** with one editor per parameter:
+  - plain fields for primitives, their wrappers, `String`, `BigInteger`, `BigDecimal`;
+  - a drop-down for enums;
+  - a **JSON editor** with a generated template for objects, arrays and collections, plus a **Form** view
+    that edits the same value field by field;
+  - the last values entered for each method are remembered.
+- **Precise error messages**: invalid input is reported per field before anything is launched
+  (e.g. `Customer has no property 'nmae'. Its properties are: id, name, email.`), and methods that cannot be
+  run explain why (abstract receiver, Spring bean, inner class, unsupported parameter type, …).
+- **Result popup**: when the method returns an object, array, collection or map, the result opens as
+  formatted, read-only JSON in a popup with a **Copy JSON** link. Plain values stay in the Run window.
+- **Unit test generation** for JUnit 5, JUnit 4.13 and JUnit 4.12. The test rebuilds the same inputs as Java
+  code, calls the method, and asserts on the return value field by field, on the thrown exception, or on the
+  changed state of the receiver. Imports are shortened and redundant casts removed. The test can also be
+  written without running the method; the assertions are then left as `// TODO`.
+- **Fresh JVM every time**: the method runs with the module's own JDK and classpath, and the project is built
+  first (Make before run), so the result is never stale and the IDE is never affected.
 
-## Plugin structure
+## Requirements
 
-A generated project contains the following content structure:
+- IntelliJ IDEA 2025.3 or newer (Community or Ultimate), with the Java and JSON plugins (bundled).
+- Projects using Java 8 or newer. The plugin itself is built with JDK 21.
+- For test generation: JUnit 5 (`org.junit.jupiter:junit-jupiter`) or JUnit 4 on the module's test classpath,
+  and a test source folder.
 
-```
-.
-├── .run/                   Predefined Run/Debug Configurations
-├── gradle
-│   ├── wrapper/            Gradle Wrapper
-│   ├── libs.versions.toml  Version catalog
-├── src                     Plugin sources
-│   └── main
-│       ├── kotlin/         Kotlin production sources
-│       └── resources/      Plugin resources
-│           ├── META-INF/   Plugin configuration file and logo
-│           └── messages/   Message bundles
-├── .gitignore              Git ignoring rules
-├── build.gradle.kts        Gradle build configuration
-├── gradle.properties       Gradle configuration properties
-├── gradlew                 *nix Gradle Wrapper script
-├── gradlew.bat             Windows Gradle Wrapper script
-├── README.md               This file
-└── settings.gradle.kts     Gradle project settings
-```
+## Getting started
 
-In addition to the configuration files, the most crucial part is the `src` directory, which contains our implementation
-and the manifest for our plugin – [plugin.xml][file:plugin.xml].
-
-> [!NOTE]
-> To use Java in your plugin, create the `/src/main/java` directory.
-
-The plugin logo is placed in `src/main/resources/META-INF/pluginIcon.svg`.
-See [Plugin Logo][docs:logo] for more information and logo requirements.
-
-## Build script
-
-The [build.gradle.kts][file:build.gradle.kts] is the core of the project definition.
-It applies three Gradle plugins:
-
-| Plugin                            | Description                                                                      |
-|-----------------------------------|----------------------------------------------------------------------------------|
-| `org.jetbrains.kotlin.jvm`        | Adds Kotlin support                                                              |
-| `org.jetbrains.changelog`         | Simplifies patching the [CHANGELOG.md][file:CHANGELOG.md] file                   |
-| `org.jetbrains.intellij.platform` | The [IntelliJ Platform Gradle Plugin][docs:intellij-platform-gradle-plugin-docs] |
-
-The `intellijPlatform` dependencies block selects the IDE to compile against:
-
-```kotlin
-intellijIdea("2025.3.5")
+```bash
+./gradlew runIde          # start a sandbox IDE with the plugin installed
+./gradlew buildPlugin     # build build/distributions/InstaRun-<version>.zip
 ```
 
-See [Target Versions][docs:target-version] for more information.
+To install the built plugin into your own IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk…** and
+choose the zip.
 
-The `intellijPlatform` dependencies block also contains a dependency on the platform testing framework:
+Then open a Java file, put the caret on a method name in its declaration and right-click → **Run Method**.
 
-```kotlin
-testFramework(TestFrameworkType.Platform)
+## What can be entered
+
+| Type | Editor | Example |
+|---|---|---|
+| `int`, `long`, `double`, `boolean`, `char`, … and wrappers | text field | `42`, `true`, `x` |
+| `String` | text field | `hello` |
+| `BigInteger`, `BigDecimal` | text field | `12.50` |
+| enums | drop-down | `PAID` |
+| arrays, `List`, `Set`, `Collection`, `Queue`, `Deque` and common implementations | JSON / Form | `[1, 2, 3]` |
+| your own classes (beans) | JSON / Form | `{"id": 7, "name": "Ann"}` |
+
+A class can be entered when it has a constructor whose parameters InstaRun can build, or setters for its
+properties. InstaRun picks the constructor that takes the properties given in the JSON and uses setters for
+the rest. Nested objects are supported; templates go three levels deep.
+
+## How it works
+
+InstaRun works in **two processes**:
+
+1. **In the IDE**, the plugin reads the method through PSI, describes every parameter type (`TypeDescriptor`),
+   shows the dialog and turns what was entered into a serializable description of the values (`ValueSpec`).
+   It then creates a temporary run configuration that starts a new JVM.
+2. **In the new JVM**, a small bootstrap (`InstaRunBootstrap`, compiled for Java 8 and put first on the
+   classpath) decodes the request, builds the values by reflection, calls the method and prints the result.
+   When a test is generated or the result popup is wanted, it also records the outcome to a file, which the
+   plugin reads back with a deserialization allowlist.
+
+Exit codes of the bootstrap: `0` returned normally, `1` the user's code threw, `2` InstaRun could not run
+the method (e.g. the class is out of date).
+
+## Testing
+
+```bash
+./gradlew bootstrapTest   # 103 tests of the bootstrap, no IDE needed (JUnit 4)
+./gradlew test            # 67 plugin tests: 50 plain unit tests + 17 IntelliJ platform tests
+./gradlew check           # both
 ```
 
-See [Testing][docs:testing] for more information
+## Project layout
 
-## Plugin configuration file
+```
+src/
+├── bootstrap/java/com/instarun/      runs in the user's JVM (Java 8, no IDE classes)
+│   ├── bootstrap/                    InstaRunBootstrap, request codec, Observer, Outcome, ObservationJson
+│   ├── json/                         JsonNode, JsonBinder, JsonSkeleton, JsonWriter
+│   └── reflection/                   TypeDescriptor, ValueSpec, RunBlocker, descriptors
+├── bootstrapTest/java/               bootstrap tests
+├── main/java/com/instarun/           the IntelliJ plugin
+│   ├── ui/                           actions, input dialog, editors, forms, result popup
+│   ├── reflection/                   PSI → descriptors (MethodDescriptorFactory, TypeDescriptorFactory)
+│   ├── json/                         JsonPsiReader (JSON PSI → JsonNode)
+│   ├── launch/                       run configuration, launcher, outcome reader, result listener
+│   └── codegen/                      test generation (TestGenerator, writers, TestFileWriter)
+├── main/resources/                   plugin.xml, MessageBundler.properties
+└── test/java/                        plugin tests
+```
 
-The plugin configuration file is a [plugin.xml][file:plugin.xml] file located in the `src/main/resources/META-INF`
-directory.
-It provides general information about the plugin, its dependencies, extensions, and listeners.
+## Limitations
 
-You can read more about this file in the [Plugin Configuration File][docs:plugin.xml] section of our documentation.
-
-### Plugin ID and name
-
-Generated plugin ID and name may require adjustment.
-
-These values are generated based on _Group ID_ and _Artifact ID_ provided in the IDE Plugin wizard.
-It is recommended to review `<id>` and `<name>` elements in the plugin.xml file, and adjust them if needed.
-
-Please note that Gradle properties `rootProject.name` and `project.group` don't need to match the `<id>` and `<name>`
-elements.
-There is no IntelliJ Platform-related reason they should as they serve different functions.
-
-## Predefined Run/Debug configurations
-
-Within the default project structure, there is a `.run` directory provided containing predefined *Run/Debug
-configurations* that expose corresponding Gradle tasks:
-
-| Configuration name  | Description                                                                                                                                                                           |
-|---------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Run IDE with Plugin | Runs [`:runIde`][docs:intellij-platform-gradle-plugin-runIde] IntelliJ Platform Gradle Plugin task. Use the *Debug* icon for plugin debugging.                                        |
-| Run Tests           | Runs [`:check`][gradle:lifecycle-tasks] Gradle task.                                                                                                                                  |
-| Run Verifications   | Runs [`:verifyPlugin`][docs:intellij-platform-gradle-plugin-verifyPlugin] IntelliJ Platform Gradle Plugin task to check the plugin compatibility against the specified IntelliJ IDEs. |
-
-> [!NOTE]
-> You can find the logs from the running task in the `idea.log` tab.
-
-## Publishing the plugin
-
-> [!TIP]
-> Make sure to follow all guidelines listed in [Publishing a Plugin][docs:publishing] to follow all recommended and
-required steps.
-
-Releasing a plugin to [JetBrains Marketplace](https://plugins.jetbrains.com) is a straightforward operation that uses
-the `publishPlugin` Gradle task provided by
-the [intellij-platform-gradle-plugin][docs:intellij-platform-gradle-plugin-docs].
-
-You can also upload the plugin to the [JetBrains Plugin Repository](https://plugins.jetbrains.com/plugin/upload)
-manually via UI.
-
-## Useful links
-
-- [IntelliJ Platform SDK Plugin SDK][docs]
-- [IntelliJ Platform Gradle Plugin Documentation][docs:intellij-platform-gradle-plugin-docs]
-- [IntelliJ Platform Explorer][jb:ipe]
-- [JetBrains Marketplace Quality Guidelines][jb:quality-guidelines]
-- [IntelliJ Platform UI Guidelines][jb:ui-guidelines]
-- [JetBrains Marketplace Paid Plugins][jb:paid-plugins]
-- [IntelliJ SDK Code Samples][gh:code-samples]
-
-[docs]: https://plugins.jetbrains.com/docs/intellij
-[docs:plugin.xml]: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html?from=IJPluginReadmeFile
-[docs:publishing]: https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginReadmeFile
-[docs:intellij-platform-gradle-plugin-docs]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html?from=IJPluginReadmeFile
-[docs:intellij-platform-gradle-plugin-runIde]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html?from=IJPluginReadmeFile#runIde
-[docs:intellij-platform-gradle-plugin-verifyPlugin]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-tasks.html?from=IJPluginReadmeFile#verifyPlugin
-[docs:logo]: https://plugins.jetbrains.com/docs/intellij/plugin-icon-file.html?from=IJPluginReadmeFile
-[docs:target-version]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html?from=IJPluginReadmeFile#target-versions
-[docs:testing]: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html?from=IJPluginReadmeFile#testing
-
-[file:build.gradle.kts]: ./build.gradle.kts
-[file:CHANGELOG.md]: ./CHANGELOG.md
-[file:gradle.properties]: ./gradle.properties
-[file:plugin.xml]: ./src/main/resources/META-INF/plugin.xml
-
-[gh:code-samples]: https://github.com/JetBrains/intellij-sdk-code-samples
-
-[gradle:lifecycle-tasks]: https://docs.gradle.org/current/userguide/java_plugin.html#lifecycle_tasks
-
-[jb:github]: https://github.com/JetBrains/.github/blob/main/profile/README.md
-[jb:forum]: https://platform.jetbrains.com/
-[jb:quality-guidelines]: https://plugins.jetbrains.com/docs/marketplace/quality-guidelines.html
-[jb:paid-plugins]: https://plugins.jetbrains.com/docs/marketplace/paid-plugins-marketplace.html
-[jb:ipe]: https://jb.gg/ipe
-[jb:ui-guidelines]: https://jetbrains.github.io/ui
+- Instance methods of abstract classes, interfaces, enums, inner classes and Spring beans cannot be run yet.
+- Maps, interfaces and abstract types cannot be entered as arguments (maps are shown in results).
+- Constructors and plain getters/setters are not offered.
+- Generated assertions reflect one run: methods that depend on time, randomness or external state need the
+  test adjusted by hand.
