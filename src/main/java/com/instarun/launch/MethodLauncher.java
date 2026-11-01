@@ -12,6 +12,7 @@ import com.intellij.execution.executors.DefaultRunExecutor;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.io.FileUtil;
@@ -32,16 +33,29 @@ import java.util.Objects;
 
 /**
  * Turns a runnable method into a one-off run configuration and starts it under the given executor.
- * Run and Debug differ only in the executor passed in; generating a test runs it once, recording how it went.
+ * Run and Debug differ only in the executor passed in, and record what the method returns so it can be shown;
+ * generating a test runs it once, recording how it went.
  */
 public final class MethodLauncher {
+
+    private static final Logger LOG = Logger.getInstance(MethodLauncher.class);
 
     private MethodLauncher() {
     }
 
-    /** @param target a method whose module is known */
+    /**
+     * Runs the method, recording what it returns so {@link ShownResultListener} can show it once the run ends.
+     *
+     * @param target a method whose module is known
+     */
     public static void launch(Project project, LaunchTarget target, MethodInput input, Executor executor) {
-        ProgramRunnerUtil.executeConfiguration(settings(project, target, input, null), executor);
+        String outcomeFile = null;
+        try {
+            outcomeFile = FileUtil.createTempFile("instarun-result", ".ser", true).getPath();
+        } catch (IOException e) {
+            LOG.warn("The method runs without its result being shown: no file to record it in", e);
+        }
+        ProgramRunnerUtil.executeConfiguration(settings(project, target, input, outcomeFile, true), executor);
     }
 
     /**
@@ -51,7 +65,7 @@ public final class MethodLauncher {
     public static void launchRecording(Project project, LaunchTarget target, MethodInput input,
                                        RecordingListener listener) throws IOException {
         File outcomeFile = FileUtil.createTempFile("instarun-outcome", ".ser", true);
-        RunnerAndConfigurationSettings settings = settings(project, target, input, outcomeFile.getPath());
+        RunnerAndConfigurationSettings settings = settings(project, target, input, outcomeFile.getPath(), false);
         RunProfile configuration = settings.getConfiguration();
         MessageBusConnection connection = project.getMessageBus().connect();
         connection.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
@@ -79,14 +93,15 @@ public final class MethodLauncher {
         ProgramRunnerUtil.executeConfiguration(settings, DefaultRunExecutor.getRunExecutorInstance());
     }
 
+    /** @param shown whether the outcome file is for showing the result rather than for a test */
     private static RunnerAndConfigurationSettings settings(Project project, LaunchTarget target, MethodInput input,
-                                                           @Nullable String outcomeFile) {
+                                                           @Nullable String outcomeFile, boolean shown) {
         MethodDescriptor method = target.getMethod();
         Module module = Objects.requireNonNull(target.getModule(), "The method's module is checked before a launch");
         List<String> parameterTypes =
                 method.getParameters().stream().map(ParameterDescriptor::getErasedTypeName).toList();
         InvocationRequest request = new InvocationRequest(method.getDeclaringClassBinaryName(), method.getMethodName(),
-                parameterTypes, input.getReceiver(), input.getArguments(), outcomeFile);
+                parameterTypes, input.getReceiver(), input.getArguments(), outcomeFile, shown);
 
         String name = MessageBundler.message("run.configuration.name",
                 StringUtil.getShortName(method.getDeclaringClassFqn()), method.getMethodName());

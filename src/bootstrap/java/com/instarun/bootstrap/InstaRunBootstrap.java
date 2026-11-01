@@ -13,9 +13,10 @@ import java.lang.reflect.Modifier;
 
 /**
  * Main class of the launched JVM. Exits with 1 when the user's code throws (the method or the receiver's
- * constructor), and with {@link #EXIT_BOOTSTRAP_FAILURE} when the call could not be set up at all. When a test is
- * being generated, it also records how the call went in the request's outcome file, and then exits right away even
- * if the call left threads running, so the test doesn't wait on them.
+ * constructor), and with {@link #EXIT_BOOTSTRAP_FAILURE} when the call could not be set up at all. When the request
+ * has an outcome file, it also records there how the call went: to show the user the returned value, or to generate
+ * a test, in which case it then exits right away even if the call left threads running, so the test doesn't wait on
+ * them.
  */
 public final class InstaRunBootstrap {
 
@@ -28,12 +29,12 @@ public final class InstaRunBootstrap {
     }
 
     public static void main(String[] args) throws Throwable {
-        boolean recordsOutcome = outcomeFileOf(args) != null;
+        boolean generatesTest = generatesTest(args);
         int exitCode;
         try {
             exitCode = run(args, System.out, System.err);
         } catch (Throwable thrown) {
-            if (!recordsOutcome) {
+            if (!generatesTest) {
                 throw thrown;
             }
             // Printed the way the JVM prints an uncaught exception, but exiting below also stops leftover threads.
@@ -41,7 +42,7 @@ public final class InstaRunBootstrap {
             thrown.printStackTrace();
             exitCode = EXIT_USER_EXCEPTION;
         }
-        if (exitCode != 0 || recordsOutcome) {
+        if (exitCode != 0 || generatesTest) {
             System.out.flush();
             System.err.flush();
             System.exit(exitCode);
@@ -91,17 +92,21 @@ public final class InstaRunBootstrap {
         boolean isVoid = method.getReturnType() == void.class;
         if (outcomeFile != null) {
             // Recorded before printing: the result's own toString might throw.
-            record(outcomeFile, isVoid ? new Outcome.ReturnedVoid() : Outcome.Returned.of(method, result), err);
+            record(outcomeFile, isVoid ? new Outcome.ReturnedVoid()
+                    : request.isShown() ? Outcome.Returned.shown(method, result)
+                    : Outcome.Returned.of(method, result), err);
         }
         out.println(RESULT_PREFIX + (isVoid ? "void" : String.valueOf(result)));
         return 0;
     }
 
-    private static @Nullable String outcomeFileOf(String[] args) {
+    /** Whether the call is recorded to generate a test from it, which ends the JVM as soon as the call is done. */
+    private static boolean generatesTest(String[] args) {
         try {
-            return decodeRequest(args).getOutcomeFile();
+            InvocationRequest request = decodeRequest(args);
+            return request.getOutcomeFile() != null && !request.isShown();
         } catch (BootstrapFailure failure) {
-            return null;
+            return false;
         }
     }
 
@@ -112,7 +117,7 @@ public final class InstaRunBootstrap {
         try (ObjectOutputStream stream = new ObjectOutputStream(new FileOutputStream(outcomeFile))) {
             stream.writeObject(outcome);
         } catch (IOException e) {
-            err.println(OUTPUT_PREFIX + "Could not record how the call went for the test: " + e);
+            err.println(OUTPUT_PREFIX + "Could not record how the call went: " + e);
         }
     }
 

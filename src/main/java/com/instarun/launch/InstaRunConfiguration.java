@@ -41,6 +41,10 @@ public final class InstaRunConfiguration extends RunConfigurationBase<RunConfigu
         this.request = request;
     }
 
+    @Nullable InvocationRequest getRequest() {
+        return request;
+    }
+
     @Override
     public Module @NotNull [] getModules() {
         return module == null ? Module.EMPTY_ARRAY : new Module[]{module};

@@ -32,6 +32,9 @@ import java.util.TreeMap;
  * other object through the getters, or a record's accessors, of its declared type. A generated test lives in the
  * package of the class it tests and extends nothing, so that package decides which classes and getters it can use.
  * Nesting, collection sizes and the total are capped, so a large or self-referencing graph stays small.
+ * <p>
+ * A value recorded to be shown to the user is read the same way, except that every object is read through its own
+ * class, whoever could see it, and the caps are higher: the user reads the value rather than asserting each part.
  */
 final class Observer {
 
@@ -39,14 +42,33 @@ final class Observer {
     static final int MAX_DEPTH = 3;
     static final int MAX_ELEMENTS = 20;
     static final int MAX_VALUES = 500;
+    static final int SHOWN_MAX_DEPTH = 8;
+    static final int SHOWN_MAX_ELEMENTS = 100;
+    static final int SHOWN_MAX_VALUES = 5000;
 
-    private final String testPackage;
+    /** The package of the test the value is recorded for, or null when it is recorded to be shown to the user. */
+    private final @Nullable String testPackage;
+    private final int maxDepth;
+    private final int maxElements;
+    private final int maxValues;
     /** The objects being recorded around the current one, to recognize an object that contains itself. */
     private final Map<Object, Boolean> enclosing = new IdentityHashMap<>();
     private int recorded;
 
     Observer(String testPackage) {
+        this(testPackage, MAX_DEPTH, MAX_ELEMENTS, MAX_VALUES);
+    }
+
+    private Observer(@Nullable String testPackage, int maxDepth, int maxElements, int maxValues) {
         this.testPackage = testPackage;
+        this.maxDepth = maxDepth;
+        this.maxElements = maxElements;
+        this.maxValues = maxValues;
+    }
+
+    /** Records a value to show the user: every object through its own class. */
+    static Observer forDisplay() {
+        return new Observer(null, SHOWN_MAX_DEPTH, SHOWN_MAX_ELEMENTS, SHOWN_MAX_VALUES);
     }
 
     /** The package a test of the class is written in: the class's own. */
@@ -69,7 +91,7 @@ final class Observer {
     }
 
     /** The class's name as the test writes it, or null if the test can't see the class. */
-    static @Nullable String nameInTest(Class<?> type, String testPackage) {
+    static @Nullable String nameInTest(Class<?> type, @Nullable String testPackage) {
         return isVisible(type, testPackage) ? type.getCanonicalName() : null;
     }
 
@@ -106,7 +128,7 @@ final class Observer {
         if (value == null) {
             return new Observation.Null();
         }
-        if (recorded >= MAX_VALUES) {
+        if (recorded >= maxValues) {
             return unrecorded(Observation.Unrecorded.Reason.LIMIT_REACHED, null);
         }
         recorded++;
@@ -120,7 +142,7 @@ final class Observer {
         if (enclosing.containsKey(value)) {
             return unrecorded(Observation.Unrecorded.Reason.CYCLE, null);
         }
-        if (depth >= MAX_DEPTH) {
+        if (depth >= maxDepth) {
             return unrecorded(Observation.Unrecorded.Reason.TOO_DEEP, null);
         }
         enclosing.put(value, Boolean.TRUE);
@@ -136,6 +158,9 @@ final class Observer {
 
     /** Values the test can only reach through methods of their declared type are recorded only if it can see it. */
     private Observation observeObject(Object value, Type declared, int depth) {
+        if (testPackage == null) {
+            declared = value.getClass();
+        }
         Class<?> declaredClass = rawOf(declared);
         boolean readable = isVisible(declaredClass, testPackage);
         if (value.getClass().isArray()) {
@@ -176,7 +201,7 @@ final class Observer {
                 isLiteral(elementClass) || elementClass.isEnum() && isVisible(elementClass, testPackage);
         int length = Array.getLength(array);
         List<Observation> elements = new ArrayList<>();
-        for (int i = 0; i < Math.min(length, MAX_ELEMENTS); i++) {
+        for (int i = 0; i < Math.min(length, maxElements); i++) {
             elements.add(observe(Array.get(array, i), elementType, depth + 1));
         }
         return new Observation.Sequence(Observation.Sequence.Kind.ARRAY, length, elements,
@@ -191,7 +216,7 @@ final class Observer {
         Type elementType = typeArgument(declared, Collection.class, 0);
         List<Observation> elements = new ArrayList<>();
         Iterator<?> iterator = collection.iterator();
-        while (iterator.hasNext() && elements.size() < MAX_ELEMENTS) {
+        while (iterator.hasNext() && elements.size() < maxElements) {
             elements.add(observe(iterator.next(), elementType, depth + 1));
         }
         return new Observation.Sequence(kind, collection.size(), elements, null);
@@ -202,7 +227,7 @@ final class Observer {
         Type valueType = typeArgument(declared, Map.class, 1);
         List<Observation.Entry> entries = new ArrayList<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
-            if (entries.size() == MAX_ELEMENTS) {
+            if (entries.size() == maxElements) {
                 break;
             }
             entries.add(new Observation.Entry(observe(entry.getKey(), keyType, depth + 1),
@@ -214,7 +239,10 @@ final class Observer {
     private Observation bean(Object value, Type declared, Class<?> declaredClass, int depth) {
         List<Method> accessors = accessorsOf(declaredClass);
         if (accessors.isEmpty()) {
-            return opaque();
+            // A test can only compare such an object as a whole; the user can at least read its toString.
+            return testPackage == null && overridesToString(value.getClass())
+                    ? new Observation.Text(value.getClass().getName(), value.toString())
+                    : opaque();
         }
         Map<String, Observation> properties = new LinkedHashMap<>();
         for (Method accessor : accessors) {
@@ -396,9 +424,12 @@ final class Observer {
 
     /**
      * Whether a test in the package can use the class: public classes, and in its own package anything not private,
-     * all the way out through the classes it is nested in.
+     * all the way out through the classes it is nested in. Without a test, as when the value is shown, any class.
      */
-    private static boolean isVisible(Class<?> type, String testPackage) {
+    private static boolean isVisible(Class<?> type, @Nullable String testPackage) {
+        if (testPackage == null) {
+            return true;
+        }
         while (type.isArray()) {
             type = type.getComponentType();
         }

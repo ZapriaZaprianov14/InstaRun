@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 
-/** Reads the {@link Outcome} a run recorded for test generation. */
+/** Reads the {@link Outcome} a run recorded, for test generation or to show the result. */
 final class OutcomeReader {
 
     private static final Logger LOG = Logger.getInstance(OutcomeReader.class);

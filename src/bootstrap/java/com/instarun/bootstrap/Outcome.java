@@ -6,11 +6,12 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.Serializable;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 
 /**
- * How a call went, written to a file for the plugin when a test is being generated from it. Read in the IDE, so
- * fields follow the same rules as {@link Observation}'s.
+ * How a call went, written to a file for the plugin when a test is being generated from it or the returned value is
+ * shown to the user. Read in the IDE, so fields follow the same rules as {@link Observation}'s.
  */
 public abstract class Outcome implements Serializable {
 
@@ -27,7 +28,8 @@ public abstract class Outcome implements Serializable {
 
         /**
          * What the test declares the result as: the return type, or its erasure when the test can't write the type
-         * itself, e.g. {@code java.util.List<com.acme.Item>}, or else {@code java.lang.Object}.
+         * itself, e.g. {@code java.util.List<com.acme.Item>}, or else {@code java.lang.Object}. When the result is
+         * shown to the user, the class of the result itself, or the return type for null.
          */
         String type;
         Observation value;
@@ -36,6 +38,26 @@ public abstract class Outcome implements Serializable {
             Observer observer = new Observer(Observer.packageOf(method.getDeclaringClass()));
             Type type = observer.declarable(method.getGenericReturnType());
             return new Returned(Observer.typeText(type), observer.observe(result, type));
+        }
+
+        /**
+         * The result as the user is shown it: read through its own class, whatever the method declares it as, and
+         * typed as that class when the user can name it, or else as the return type, e.g. for a JDK-internal list.
+         */
+        static Returned shown(Method method, @Nullable Object result) {
+            Type type = result != null && isNameable(result.getClass())
+                    ? result.getClass() : method.getGenericReturnType();
+            return new Returned(Observer.typeText(type), Observer.forDisplay().observe(result, type));
+        }
+
+        /** Whether the class and those it is nested in are public, so its name means something to the user. */
+        private static boolean isNameable(Class<?> type) {
+            for (Class<?> current = type; current != null; current = current.getDeclaringClass()) {
+                if (!Modifier.isPublic(current.getModifiers())) {
+                    return false;
+                }
+            }
+            return !type.isAnonymousClass() && !type.isLocalClass();
         }
     }
 
